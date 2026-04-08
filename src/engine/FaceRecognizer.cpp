@@ -1,5 +1,6 @@
 #include "engine/FaceRecognizer.hpp"
 
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -7,17 +8,27 @@
 
 namespace asdun {
 
-std::vector<float> FaceRecognizer::extractEmbedding(const cv::Mat& face_bgr) const {
-  if (face_bgr.empty()) {
-    return {};
-  }
+namespace {
 
+cv::Mat rotateFace(const cv::Mat& face_bgr, double angle_deg) {
+  const cv::Point2f center(static_cast<float>(face_bgr.cols) * 0.5F, static_cast<float>(face_bgr.rows) * 0.5F);
+  const cv::Mat rot = cv::getRotationMatrix2D(center, angle_deg, 1.0);
+
+  cv::Mat rotated{};
+  cv::warpAffine(face_bgr, rotated, rot, face_bgr.size(), cv::INTER_LINEAR, cv::BORDER_REPLICATE);
+  return rotated;
+}
+
+std::vector<float> buildSingleEmbedding(const cv::Mat& face_bgr) {
   cv::Mat gray{};
   cv::cvtColor(face_bgr, gray, cv::COLOR_BGR2GRAY);
 
-  // 这里使用轻量级占位特征（16x8=128维），后续可直接替换成 NCNN 正式 embedding 模型输出。
+  auto clahe = cv::createCLAHE(2.0, cv::Size(8, 8));
+  cv::Mat enhanced{};
+  clahe->apply(gray, enhanced);
+
   cv::Mat resized{};
-  cv::resize(gray, resized, cv::Size(16, 8), 0.0, 0.0, cv::INTER_LINEAR);
+  cv::resize(enhanced, resized, cv::Size(16, 8), 0.0, 0.0, cv::INTER_LINEAR);
   resized.convertTo(resized, CV_32F, 1.0 / 255.0);
 
   std::vector<float> embedding;
@@ -34,6 +45,43 @@ std::vector<float> FaceRecognizer::extractEmbedding(const cv::Mat& face_bgr) con
   const float mean = sum / static_cast<float>(embedding.size());
   for (float& v : embedding) {
     v -= mean;
+  }
+  return embedding;
+}
+
+}  // namespace
+
+std::vector<float> FaceRecognizer::extractEmbedding(const cv::Mat& face_bgr) const {
+  if (face_bgr.empty()) {
+    return {};
+  }
+
+  // 通过原图和轻度旋转图像求平均特征，提升对小角度歪头的鲁棒性。
+  const std::array<double, 3> angles = {-12.0, 0.0, 12.0};
+  std::vector<float> embedding;
+  int valid_views = 0;
+
+  for (const double angle : angles) {
+    const cv::Mat view = (std::abs(angle) < 1e-3) ? face_bgr : rotateFace(face_bgr, angle);
+    auto single = buildSingleEmbedding(view);
+    if (single.empty()) {
+      continue;
+    }
+
+    if (embedding.empty()) {
+      embedding.assign(single.size(), 0.0F);
+    }
+    for (std::size_t i = 0; i < single.size(); ++i) {
+      embedding[i] += single[i];
+    }
+    valid_views++;
+  }
+
+  if (valid_views <= 0) {
+    return {};
+  }
+  for (float& v : embedding) {
+    v /= static_cast<float>(valid_views);
   }
   l2Normalize(embedding);
   return embedding;

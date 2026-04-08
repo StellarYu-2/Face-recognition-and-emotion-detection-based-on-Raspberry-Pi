@@ -20,10 +20,13 @@ class Renderer {
                       const std::string& status_text,
                       bool ready) const;
   int waitKey(int delay_ms) const;
+  void closeWindow() const;
 
  private:
+  void ensureWindow() const;
+
   std::string window_name_;
+  mutable bool window_created_{false};
 };
 
 }  // namespace asdun
-

@@ -29,12 +29,22 @@ int App::run() {
     if (cmd == "1") {
       sm_.setState(AppState::EnrollInputName);
       handleEnrollment();
-      sm_.setState(AppState::MainMenu);
+      if (sm_.getState() != AppState::Exit) {
+        sm_.setState(AppState::MainMenu);
+      }
     } else if (cmd == "2") {
       sm_.setState(AppState::Recognize);
       handleRecognition();
-      sm_.setState(AppState::MainMenu);
+      if (sm_.getState() != AppState::Exit) {
+        sm_.setState(AppState::MainMenu);
+      }
     } else if (cmd == "0") {
+      if (renderer_ != nullptr) {
+        renderer_->closeWindow();
+      }
+      if (camera_ != nullptr) {
+        camera_->stop();
+      }
       sm_.setState(AppState::Exit);
     } else {
       std::cout << "[提示] 无效指令，请重新输入。" << std::endl;
@@ -189,6 +199,8 @@ void App::handleEnrollment() {
   const std::string name = file_store_->sanitizeName(trim(raw_name));
   if (name.empty()) {
     std::cout << "[Enrollment] 姓名无效，已返回主菜单。" << std::endl;
+    camera_->stop();
+    renderer_->closeWindow();
     return;
   }
 
@@ -201,12 +213,16 @@ void App::handleEnrollment() {
     std::transform(yn.begin(), yn.end(), yn.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     if (yn != "y") {
       std::cout << "[Enrollment] 已取消覆盖，返回主菜单。" << std::endl;
+      camera_->stop();
+      renderer_->closeWindow();
       return;
     }
 
     const auto old_paths = database_->listImagePathsByPerson(name);
     if (!database_->deletePersonAndEmbeddings(name)) {
       std::cerr << "[Enrollment] 清理旧数据库记录失败，已中止。" << std::endl;
+      camera_->stop();
+      renderer_->closeWindow();
       return;
     }
     file_store_->removeFiles(old_paths);
@@ -216,6 +232,8 @@ void App::handleEnrollment() {
 
   if (!database_->upsertPerson(name, &person_id)) {
     std::cerr << "[Enrollment] 创建人员记录失败。" << std::endl;
+    camera_->stop();
+    renderer_->closeWindow();
     return;
   }
 
@@ -258,6 +276,10 @@ void App::handleEnrollment() {
       std::cout << "[Enrollment] 用户中止录入。" << std::endl;
       break;
     }
+    if (key == '0') {
+      sm_.setState(AppState::Exit);
+      break;
+    }
     if ((key == 's' || key == 'S') && ready && best_face.area() > 0) {
       const cv::Rect bounded = best_face & cv::Rect(0, 0, frame.bgr.cols, frame.bgr.rows);
       const cv::Mat face = frame.bgr(bounded).clone();
@@ -287,6 +309,8 @@ void App::handleEnrollment() {
   }
 
   embedding_store_->reload();
+  camera_->stop();
+  renderer_->closeWindow();
   std::cout << "[Enrollment] 完成，返回主菜单。" << std::endl;
 }
 
@@ -310,11 +334,18 @@ void App::handleRecognition() {
     if (key == 'q' || key == 'Q') {
       break;
     }
+    if (key == '0') {
+      sm_.setState(AppState::Exit);
+      break;
+    }
     if (key == 'r' || key == 'R') {
       embedding_store_->reload();
       std::cout << "[Recognition] 特征库已重新加载。" << std::endl;
     }
   }
+
+  camera_->stop();
+  renderer_->closeWindow();
 }
 
 std::string App::trim(const std::string& s) {

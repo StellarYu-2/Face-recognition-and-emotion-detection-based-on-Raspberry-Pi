@@ -51,6 +51,10 @@ watch -n 5 vcgencmd measure_temp
 - 是否出现崩溃、卡死、窗口打不开。
 - 是否每次都能正常退出并再次启动。
 
+CPU 到了 146%
+进入识别模式之后按q能够退出模式，没有卡死崩溃现象，但是会出现初始显示的摄像框也就是显示出来的框没有关闭，而是停留在最后按下q的画面当中，也就是按下q相机窗口界面没有关闭
+按0发现好像没有反应
+
 ### T02 录入质量门控（S6）
 
 1. 进入录入模式，输入新姓名（如 `user_a`）。
@@ -158,3 +162,9 @@ watch -n 5 vcgencmd measure_temp
 3. 再看参数是否过激（`detect_interval`、`emotion_interval`、`match_threshold`）。  
 4. 最后看模型与代码逻辑（跟踪抖动、置信度映射、持久化一致性）。
 
+## 7.Next task!
+立刻做最关键升级：替换真实 NCNN 模型
+FaceDetector.cpp：Haar 占位 -> NCNN 检测模型。
+FaceRecognizer.cpp：占位 embedding -> ArcFace/同类识别模型。
+EmotionRecognizer.cpp：启发式 -> NCNN 情绪分类模型。
+重新标定 match_threshold 和 sigmoid_tau。

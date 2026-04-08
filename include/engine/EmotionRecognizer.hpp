@@ -3,6 +3,7 @@
 #include <string>
 
 #include <opencv2/core.hpp>
+#include <opencv2/objdetect.hpp>
 
 #include "core/Types.hpp"
 
@@ -15,8 +16,12 @@ class EmotionRecognizer {
   EmotionResult infer(const cv::Mat& face_bgr) const;
 
  private:
+  static cv::Mat normalizeFace(const cv::Mat& face_bgr);
+  bool detectSmile(const cv::Mat& normalized_gray, float* smile_strength) const;
+
   bool initialized_{false};
+  bool smile_ready_{false};
+  mutable cv::CascadeClassifier smile_cascade_{};
 };
 
 }  // namespace asdun
-
