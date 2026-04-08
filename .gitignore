@@ -1,0 +1,95 @@
+# =========================
+# CMake / Build Artifacts
+# =========================
+/build/
+/build_rpi/
+/cmake-build-*/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/install_manifest.txt
+/Makefile
+/build.ninja
+/rules.ninja
+/.ninja_*
+/Testing/
+/CTestTestfile.cmake
+/compile_commands.json
+
+# =========================
+# C / C++ Compiled Outputs
+# =========================
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.lib
+*.exe
+*.out
+*.pdb
+*.idb
+*.ilk
+*.exp
+*.manifest
+
+# =========================
+# Runtime Data (Do Not Commit)
+# =========================
+/data/images/
+/data/db/
+/data/logs/
+
+# Optional placeholder files if you use them
+!/data/.gitkeep
+!/data/images/.gitkeep
+!/data/db/.gitkeep
+!/data/logs/.gitkeep
+
+# =========================
+# Model Weights / Large Files
+# =========================
+/models/*.bin
+/models/*.param
+/models/*.onnx
+/models/*.tflite
+/models/*.pt
+/models/*.pth
+/models/*.ckpt
+/models/*.engine
+/models/*.weights
+
+# =========================
+# IDE / Editor
+# =========================
+/.vscode/
+/.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+
+# =========================
+# OS / Misc
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+*.tmp
+
+# =========================
+# Python Cache (for helper scripts)
+# =========================
+__pycache__/
+*.pyc
+
+# =========================
+# Environment files
+# =========================
+.env
+.env.*
+*.local
+
