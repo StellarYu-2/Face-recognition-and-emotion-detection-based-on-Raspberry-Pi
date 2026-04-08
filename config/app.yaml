@@ -1,0 +1,32 @@
+# Camera source:
+# - "0" for /dev/video0
+# - "gst:<pipeline>" for GStreamer pipeline
+camera_source: "0"
+frame_width: 640
+frame_height: 480
+frame_fps: 30
+
+# Pipeline schedule
+detect_interval: 3
+emotion_interval: 2
+
+# Enrollment quality gate
+min_face_area_ratio: 0.08
+blur_threshold: 100.0
+quality_stable_frames: 3
+
+# Recognition threshold and confidence mapping
+match_threshold: 0.80
+sigmoid_tau: 0.08
+
+# Tracking
+track_ttl: 10
+track_iou_threshold: 0.30
+
+# Storage
+db_path: "./data/db/face_access.db"
+images_root: "./data/images"
+
+# Haar cascade path on Raspberry Pi Debian
+face_cascade_path: "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
+
