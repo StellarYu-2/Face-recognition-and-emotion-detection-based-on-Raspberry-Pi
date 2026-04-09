@@ -30,6 +30,7 @@ class Database {
                        const std::string& model_tag);
 
   std::vector<std::string> listImagePathsByPerson(const std::string& name) const;
+  std::vector<std::string> listPersons() const;
   std::vector<StoredEmbedding> loadAllEmbeddings() const;
 
  private:

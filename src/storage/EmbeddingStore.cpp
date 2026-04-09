@@ -76,6 +76,7 @@ IdentityResult EmbeddingStore::match(const std::vector<float>& query_embedding,
   result.name = is_known ? best_name : "Unknown";
   result.known = is_known;
   result.distance = best_distance;
+  result.margin = std::isfinite(margin) ? margin : 999.0F;
   result.measured = !is_ambiguous;
   result.conf_pct = is_known ? known_conf : (is_ambiguous ? 0.0F : (100.0F - known_conf));
   result.matched_sample_count = ranked.front().sample_count;

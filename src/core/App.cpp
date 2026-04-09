@@ -7,6 +7,8 @@
 #include <iostream>
 #include <sstream>
 
+#include <opencv2/imgproc.hpp>
+
 namespace asdun {
 
 namespace {
@@ -31,7 +33,13 @@ int App::run() {
   }
 
   while (sm_.getState() != AppState::Exit) {
-    printMainMenu();
+    std::cout << "\n========================\n";
+    std::cout << "ASDUN Access Main Menu\n";
+    std::cout << "1) Enroll / update person\n";
+    std::cout << "2) Recognition + emotion\n";
+    std::cout << "3) Delete one person\n";
+    std::cout << "0) Exit\n";
+    std::cout << "Command: ";
     std::string cmd;
     std::getline(std::cin, cmd);
     cmd = trim(cmd);
@@ -47,6 +55,8 @@ int App::run() {
       if (sm_.getState() != AppState::Exit) {
         sm_.setState(AppState::MainMenu);
       }
+    } else if (cmd == "3") {
+      handleDeletePerson();
     } else if (cmd == "0") {
       if (renderer_ != nullptr) {
         renderer_->closeWindow();
@@ -457,6 +467,68 @@ void App::handleRecognition() {
 
   camera_->stop();
   renderer_->closeWindow();
+}
+
+void App::handleDeletePerson() {
+  const auto persons = database_->listPersons();
+  if (persons.empty()) {
+    std::cout << "[Delete] No persons found in the database." << std::endl;
+    return;
+  }
+
+  std::cout << "[Delete] Database persons:" << std::endl;
+  for (std::size_t i = 0; i < persons.size(); ++i) {
+    std::cout << (i + 1) << ") " << persons[i] << std::endl;
+  }
+  std::cout << "Select a person number to delete (0 to cancel): ";
+
+  std::string choice_text;
+  std::getline(std::cin, choice_text);
+  choice_text = trim(choice_text);
+  if (choice_text.empty() || choice_text == "0") {
+    std::cout << "[Delete] Cancelled." << std::endl;
+    return;
+  }
+
+  int choice = 0;
+  try {
+    choice = std::stoi(choice_text);
+  } catch (...) {
+    std::cout << "[Delete] Invalid selection." << std::endl;
+    return;
+  }
+  if (choice < 1 || choice > static_cast<int>(persons.size())) {
+    std::cout << "[Delete] Invalid selection." << std::endl;
+    return;
+  }
+
+  const std::string& name = persons[static_cast<std::size_t>(choice - 1)];
+  const auto image_paths = file_store_->listPersonImages(name);
+
+  std::cout << "[Delete] Remove " << name << " from the database";
+  if (!image_paths.empty()) {
+    std::cout << " and delete " << image_paths.size() << " saved image(s)";
+  }
+  std::cout << "? (y/n): ";
+
+  std::string yn;
+  std::getline(std::cin, yn);
+  yn = trim(yn);
+  std::transform(yn.begin(), yn.end(), yn.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (yn != "y") {
+    std::cout << "[Delete] Cancelled." << std::endl;
+    return;
+  }
+
+  if (!database_->deletePersonAndEmbeddings(name)) {
+    std::cerr << "[Delete] Failed to remove DB records for " << name << "." << std::endl;
+    return;
+  }
+
+  file_store_->removeFiles(image_paths);
+  file_store_->removePersonDir(name);
+  embedding_store_->reload();
+  std::cout << "[Delete] Removed person data for " << name << "." << std::endl;
 }
 
 std::string App::trim(const std::string& s) {

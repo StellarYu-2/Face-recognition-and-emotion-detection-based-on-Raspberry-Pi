@@ -3,6 +3,8 @@
 #include <memory>
 #include <string>
 
+#include <opencv2/core.hpp>
+
 #include "camera/CameraManager.hpp"
 #include "core/StateMachine.hpp"
 #include "engine/EmotionRecognizer.hpp"
@@ -84,6 +86,7 @@ class App {
   void printMainMenu() const;
   void handleEnrollment();
   void handleRecognition();
+  void handleDeletePerson();
   static std::string trim(const std::string& s);
 
   std::string config_path_;

@@ -31,6 +31,7 @@ struct Detection {
 struct IdentityResult {
   std::string name{"Unknown"};
   float distance{1.0F};
+  float margin{0.0F};
   float conf_pct{0.0F};
   bool known{false};
   bool measured{false};

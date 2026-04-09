@@ -258,6 +258,28 @@ WHERE p.name = ?;
   return paths;
 }
 
+std::vector<std::string> Database::listPersons() const {
+  std::vector<std::string> persons;
+  if (db_ == nullptr) {
+    return persons;
+  }
+
+  sqlite3_stmt* stmt = nullptr;
+  constexpr const char* kSql = "SELECT name FROM persons ORDER BY name ASC;";
+  if (sqlite3_prepare_v2(db_, kSql, -1, &stmt, nullptr) != SQLITE_OK) {
+    return persons;
+  }
+
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    const unsigned char* text = sqlite3_column_text(stmt, 0);
+    if (text != nullptr) {
+      persons.emplace_back(reinterpret_cast<const char*>(text));
+    }
+  }
+  sqlite3_finalize(stmt);
+  return persons;
+}
+
 std::vector<StoredEmbedding> Database::loadAllEmbeddings() const {
   std::vector<StoredEmbedding> out;
   if (db_ == nullptr) {

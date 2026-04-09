@@ -66,6 +66,30 @@ bool FileStore::saveFaceImage(const std::string& person_name, const cv::Mat& ima
   return true;
 }
 
+std::vector<std::string> FileStore::listPersonImages(const std::string& person_name) const {
+  std::vector<std::string> paths;
+  const std::string safe_name = sanitizeName(person_name);
+  const fs::path person_dir = fs::path(images_root_) / safe_name;
+  std::error_code ec;
+  if (!fs::exists(person_dir, ec) || ec) {
+    return paths;
+  }
+
+  for (const auto& entry : fs::directory_iterator(person_dir, ec)) {
+    if (ec || !entry.is_regular_file()) {
+      continue;
+    }
+    std::string ext = entry.path().extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".bmp") {
+      paths.push_back(entry.path().string());
+    }
+  }
+
+  std::sort(paths.begin(), paths.end());
+  return paths;
+}
+
 bool FileStore::removePersonDir(const std::string& person_name) const {
   const std::string safe_name = sanitizeName(person_name);
   const fs::path person_dir = fs::path(images_root_) / safe_name;
@@ -87,4 +111,3 @@ bool FileStore::removeFiles(const std::vector<std::string>& paths) const {
 }
 
 }  // namespace asdun
-

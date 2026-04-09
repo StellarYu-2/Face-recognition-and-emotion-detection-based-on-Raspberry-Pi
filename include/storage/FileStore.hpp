@@ -14,6 +14,7 @@ class FileStore {
   bool ensureBaseDirs() const;
   std::string sanitizeName(const std::string& name) const;
   bool saveFaceImage(const std::string& person_name, const cv::Mat& image_bgr, std::string* out_path) const;
+  std::vector<std::string> listPersonImages(const std::string& person_name) const;
   bool removePersonDir(const std::string& person_name) const;
   bool removeFiles(const std::vector<std::string>& paths) const;
 
@@ -22,4 +23,3 @@ class FileStore {
 };
 
 }  // namespace asdun
-

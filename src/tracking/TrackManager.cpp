@@ -12,7 +12,11 @@ namespace asdun {
 namespace {
 
 constexpr int kIdentityConfirmHits = 2;
+constexpr int kIdentitySwitchConfirmHits = 4;
 constexpr int kIdentityUnknownClearHits = 3;
+constexpr float kIdentitySwitchMinMargin = 0.09F;
+constexpr float kIdentitySwitchMinDistanceGain = 0.05F;
+constexpr float kIdentitySwitchConfBoost = 10.0F;
 constexpr float kBoxSmoothAlpha = 0.38F;
 constexpr float kEmotionStableAlpha = 0.34F;
 constexpr float kEmotionSwitchAlpha = 0.62F;
@@ -241,6 +245,7 @@ void TrackManager::updateWithDetections(const std::vector<Detection>& detections
         if (tr.identity.known && tr.identity.name == new_id.name) {
           tr.identity.conf_pct = ema(tr.identity.conf_pct, new_id.conf_pct, 0.35F);
           tr.identity.distance = ema(tr.identity.distance, new_id.distance, 0.35F);
+          tr.identity.margin = ema(tr.identity.margin, new_id.margin, 0.35F);
           tr.identity.measured = true;
           tr.identity.matched_sample_count = new_id.matched_sample_count;
           tr.identity.debug_summary = new_id.debug_summary;
@@ -250,6 +255,7 @@ void TrackManager::updateWithDetections(const std::vector<Detection>& detections
           if (tr.pending_identity.known && tr.pending_identity.name == new_id.name) {
             tr.pending_identity.conf_pct = ema(tr.pending_identity.conf_pct, new_id.conf_pct, 0.35F);
             tr.pending_identity.distance = ema(tr.pending_identity.distance, new_id.distance, 0.35F);
+            tr.pending_identity.margin = ema(tr.pending_identity.margin, new_id.margin, 0.35F);
             tr.pending_identity.matched_sample_count = new_id.matched_sample_count;
             tr.pending_identity.debug_summary = new_id.debug_summary;
             tr.pending_identity_hits += 1;
@@ -258,8 +264,18 @@ void TrackManager::updateWithDetections(const std::vector<Detection>& detections
             tr.pending_identity_hits = 1;
           }
 
-          if (!tr.identity.known || tr.pending_identity_hits >= kIdentityConfirmHits ||
-              new_id.conf_pct > tr.identity.conf_pct + 18.0F) {
+          bool accept_pending = false;
+          if (!tr.identity.known) {
+            accept_pending = (tr.pending_identity_hits >= kIdentityConfirmHits);
+          } else {
+            const bool enough_hits = tr.pending_identity_hits >= kIdentitySwitchConfirmHits;
+            const bool margin_ok = tr.pending_identity.margin >= kIdentitySwitchMinMargin;
+            const bool distance_gain_ok = (tr.identity.distance - tr.pending_identity.distance) >= kIdentitySwitchMinDistanceGain;
+            const bool conf_boost_ok = tr.pending_identity.conf_pct >= tr.identity.conf_pct + kIdentitySwitchConfBoost;
+            accept_pending = enough_hits && (margin_ok || distance_gain_ok || conf_boost_ok);
+          }
+
+          if (accept_pending) {
             tr.identity = tr.pending_identity;
             tr.pending_identity = IdentityResult{};
             tr.pending_identity_hits = 0;
