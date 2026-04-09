@@ -33,13 +33,7 @@ int App::run() {
   }
 
   while (sm_.getState() != AppState::Exit) {
-    std::cout << "\n========================\n";
-    std::cout << "ASDUN Access Main Menu\n";
-    std::cout << "1) Enroll / update person\n";
-    std::cout << "2) Recognition + emotion\n";
-    std::cout << "3) Delete one person\n";
-    std::cout << "0) Exit\n";
-    std::cout << "Command: ";
+    printMainMenu();
     std::string cmd;
     std::getline(std::cin, cmd);
     cmd = trim(cmd);
@@ -300,6 +294,14 @@ bool App::initComponents() {
 
 void App::printMainMenu() const {
   std::cout << "\n========================\n";
+  std::cout << "ASDUN 门禁系统主菜单\n";
+  std::cout << "1) 录入/更新人员\n";
+  std::cout << "2) 实时识别 + 情绪检测\n";
+  std::cout << "3) 删除人员\n";
+  std::cout << "0) 退出\n";
+  std::cout << "请输入指令：";
+  return;
+  std::cout << "\n========================\n";
   std::cout << "树莓派门禁系统主菜单\n";
   std::cout << "1) 录入新人员（2张）\n";
   std::cout << "2) 实时识别 + 情绪检测\n";
@@ -472,21 +474,21 @@ void App::handleRecognition() {
 void App::handleDeletePerson() {
   const auto persons = database_->listPersons();
   if (persons.empty()) {
-    std::cout << "[Delete] No persons found in the database." << std::endl;
+    std::cout << "[删除] 数据库中暂无人员。" << std::endl;
     return;
   }
 
-  std::cout << "[Delete] Database persons:" << std::endl;
+  std::cout << "[删除] 当前数据库中的人员：" << std::endl;
   for (std::size_t i = 0; i < persons.size(); ++i) {
     std::cout << (i + 1) << ") " << persons[i] << std::endl;
   }
-  std::cout << "Select a person number to delete (0 to cancel): ";
+  std::cout << "请输入要删除的人员编号（输入 0 取消）：";
 
   std::string choice_text;
   std::getline(std::cin, choice_text);
   choice_text = trim(choice_text);
   if (choice_text.empty() || choice_text == "0") {
-    std::cout << "[Delete] Cancelled." << std::endl;
+    std::cout << "[删除] 已取消。" << std::endl;
     return;
   }
 
@@ -494,41 +496,41 @@ void App::handleDeletePerson() {
   try {
     choice = std::stoi(choice_text);
   } catch (...) {
-    std::cout << "[Delete] Invalid selection." << std::endl;
+    std::cout << "[删除] 选择无效。" << std::endl;
     return;
   }
   if (choice < 1 || choice > static_cast<int>(persons.size())) {
-    std::cout << "[Delete] Invalid selection." << std::endl;
+    std::cout << "[删除] 选择无效。" << std::endl;
     return;
   }
 
   const std::string& name = persons[static_cast<std::size_t>(choice - 1)];
   const auto image_paths = file_store_->listPersonImages(name);
 
-  std::cout << "[Delete] Remove " << name << " from the database";
+  std::cout << "[删除] 是否从数据库中删除 " << name;
   if (!image_paths.empty()) {
-    std::cout << " and delete " << image_paths.size() << " saved image(s)";
+    std::cout << "，并同时删除 " << image_paths.size() << " 张已保存图片";
   }
-  std::cout << "? (y/n): ";
+  std::cout << "？(y/n): ";
 
   std::string yn;
   std::getline(std::cin, yn);
   yn = trim(yn);
   std::transform(yn.begin(), yn.end(), yn.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   if (yn != "y") {
-    std::cout << "[Delete] Cancelled." << std::endl;
+    std::cout << "[删除] 已取消。" << std::endl;
     return;
   }
 
   if (!database_->deletePersonAndEmbeddings(name)) {
-    std::cerr << "[Delete] Failed to remove DB records for " << name << "." << std::endl;
+    std::cerr << "[删除] 删除 " << name << " 的数据库记录失败。" << std::endl;
     return;
   }
 
   file_store_->removeFiles(image_paths);
   file_store_->removePersonDir(name);
   embedding_store_->reload();
-  std::cout << "[Delete] Removed person data for " << name << "." << std::endl;
+  std::cout << "[删除] 已删除 " << name << " 的人员数据。" << std::endl;
 }
 
 std::string App::trim(const std::string& s) {
