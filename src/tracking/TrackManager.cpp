@@ -1,8 +1,17 @@
 #include "tracking/TrackManager.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace asdun {
+
+namespace {
+
+constexpr int kIdentityConfirmHits = 2;
+constexpr int kIdentityUnknownClearHits = 3;
+
+}  // namespace
 
 TrackManager::TrackManager(int max_ttl, float iou_match_threshold)
     : max_ttl_(max_ttl), iou_match_threshold_(iou_match_threshold) {}
@@ -18,14 +27,22 @@ void TrackManager::updateWithDetections(const std::vector<Detection>& detections
 
   for (std::size_t d = 0; d < detections.size(); ++d) {
     float best_iou = 0.0F;
+    float best_center_ratio = std::numeric_limits<float>::max();
     int best_track = -1;
     for (std::size_t t = 0; t < old_track_count; ++t) {
       if (track_taken[t]) {
         continue;
       }
       const float v = iou(detections[d].box, tracks_[t].box);
-      if (v > iou_match_threshold_ && v > best_iou) {
+      const float center_ratio = centerDistanceRatio(detections[d].box, tracks_[t].box);
+      const bool iou_match = (v > iou_match_threshold_);
+      const bool center_match = (center_ratio < 0.35F);
+      if (iou_match && v > best_iou) {
         best_iou = v;
+        best_center_ratio = center_ratio;
+        best_track = static_cast<int>(t);
+      } else if (!iou_match && center_match && best_track < 0 && center_ratio < best_center_ratio) {
+        best_center_ratio = center_ratio;
         best_track = static_cast<int>(t);
       }
     }
@@ -48,14 +65,45 @@ void TrackManager::updateWithDetections(const std::vector<Detection>& detections
       tr.ttl = max_ttl_;
 
       if (new_id.known) {
+        tr.unknown_identity_streak = 0;
         if (tr.identity.known && tr.identity.name == new_id.name) {
           tr.identity.conf_pct = ema(tr.identity.conf_pct, new_id.conf_pct, 0.35F);
           tr.identity.distance = ema(tr.identity.distance, new_id.distance, 0.35F);
-        } else if (!tr.identity.known || (new_id.conf_pct > tr.identity.conf_pct + 8.0F)) {
-          tr.identity = new_id;
+          tr.identity.matched_sample_count = new_id.matched_sample_count;
+          tr.identity.debug_summary = new_id.debug_summary;
+          tr.pending_identity = IdentityResult{};
+          tr.pending_identity_hits = 0;
+        } else {
+          if (tr.pending_identity.known && tr.pending_identity.name == new_id.name) {
+            tr.pending_identity.conf_pct = ema(tr.pending_identity.conf_pct, new_id.conf_pct, 0.35F);
+            tr.pending_identity.distance = ema(tr.pending_identity.distance, new_id.distance, 0.35F);
+            tr.pending_identity.matched_sample_count = new_id.matched_sample_count;
+            tr.pending_identity.debug_summary = new_id.debug_summary;
+            tr.pending_identity_hits += 1;
+          } else {
+            tr.pending_identity = new_id;
+            tr.pending_identity_hits = 1;
+          }
+
+          if (!tr.identity.known || tr.pending_identity_hits >= kIdentityConfirmHits ||
+              new_id.conf_pct > tr.identity.conf_pct + 18.0F) {
+            tr.identity = tr.pending_identity;
+            tr.pending_identity = IdentityResult{};
+            tr.pending_identity_hits = 0;
+          }
         }
       } else if (!tr.identity.known) {
         tr.identity = new_id;
+        tr.pending_identity = IdentityResult{};
+        tr.pending_identity_hits = 0;
+      } else {
+        tr.pending_identity = IdentityResult{};
+        tr.pending_identity_hits = 0;
+        tr.unknown_identity_streak += 1;
+        if (tr.unknown_identity_streak >= kIdentityUnknownClearHits) {
+          tr.identity = new_id;
+          tr.unknown_identity_streak = 0;
+        }
       }
 
       if (tr.emotion.label == new_emo.label) {
@@ -70,6 +118,9 @@ void TrackManager::updateWithDetections(const std::vector<Detection>& detections
       tr.identity = new_id;
       tr.emotion = new_emo;
       tr.ttl = max_ttl_;
+      tr.pending_identity = IdentityResult{};
+      tr.pending_identity_hits = 0;
+      tr.unknown_identity_streak = 0;
       tr.last_frame_id = frame_id;
       tr.last_update_ms = ts_ms;
       tracks_.push_back(std::move(tr));
@@ -89,7 +140,6 @@ void TrackManager::updateWithDetections(const std::vector<Detection>& detections
 
 void TrackManager::tickWithoutDetections(std::uint64_t frame_id, std::uint64_t ts_ms) {
   for (auto& tr : tracks_) {
-    tr.ttl -= 1;
     tr.last_frame_id = frame_id;
     tr.last_update_ms = ts_ms;
   }
@@ -139,6 +189,22 @@ float TrackManager::iou(const cv::Rect& a, const cv::Rect& b) {
     return 0.0F;
   }
   return inter / union_area;
+}
+
+float TrackManager::centerDistanceRatio(const cv::Rect& a, const cv::Rect& b) {
+  const float ax = static_cast<float>(a.x) + static_cast<float>(a.width) * 0.5F;
+  const float ay = static_cast<float>(a.y) + static_cast<float>(a.height) * 0.5F;
+  const float bx = static_cast<float>(b.x) + static_cast<float>(b.width) * 0.5F;
+  const float by = static_cast<float>(b.y) + static_cast<float>(b.height) * 0.5F;
+
+  const float dx = ax - bx;
+  const float dy = ay - by;
+  const float dist = std::sqrt(dx * dx + dy * dy);
+  const float scale = static_cast<float>(std::max({a.width, a.height, b.width, b.height}));
+  if (scale <= 1e-6F) {
+    return std::numeric_limits<float>::max();
+  }
+  return dist / scale;
 }
 
 float TrackManager::ema(float old_value, float new_value, float alpha) {

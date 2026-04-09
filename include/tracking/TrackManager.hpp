@@ -25,6 +25,7 @@ class TrackManager {
 
  private:
   static float iou(const cv::Rect& a, const cv::Rect& b);
+  static float centerDistanceRatio(const cv::Rect& a, const cv::Rect& b);
   static float ema(float old_value, float new_value, float alpha);
   void pruneDeadTracks();
 
@@ -35,4 +36,3 @@ class TrackManager {
 };
 
 }  // namespace asdun
-

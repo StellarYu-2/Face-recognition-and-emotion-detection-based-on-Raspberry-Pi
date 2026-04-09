@@ -21,6 +21,29 @@ bool execSql(sqlite3* db, const char* sql) {
   return true;
 }
 
+bool tableHasColumn(sqlite3* db, const char* table_name, const std::string& column_name) {
+  if (db == nullptr) {
+    return false;
+  }
+
+  sqlite3_stmt* stmt = nullptr;
+  const std::string sql = "PRAGMA table_info(" + std::string(table_name) + ");";
+  if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+    return false;
+  }
+
+  bool found = false;
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    const unsigned char* text = sqlite3_column_text(stmt, 1);
+    if (text != nullptr && column_name == reinterpret_cast<const char*>(text)) {
+      found = true;
+      break;
+    }
+  }
+  sqlite3_finalize(stmt);
+  return found;
+}
+
 }  // namespace
 
 Database::~Database() { close(); }
@@ -61,11 +84,15 @@ CREATE TABLE IF NOT EXISTS embeddings (
   embedding BLOB NOT NULL,
   image_path TEXT,
   quality_score REAL DEFAULT 0,
+  model_tag TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
   FOREIGN KEY(person_id) REFERENCES persons(id) ON DELETE CASCADE
 );
   )SQL";
-  return execSql(db_, kSql);
+  if (!execSql(db_, kSql)) {
+    return false;
+  }
+  return ensureEmbeddingsColumn("model_tag", "TEXT NOT NULL DEFAULT ''");
 }
 
 bool Database::personExists(const std::string& name, int* person_id) const {
@@ -180,7 +207,8 @@ bool Database::deletePersonAndEmbeddings(const std::string& name) {
 bool Database::insertEmbedding(int person_id,
                                const std::vector<float>& embedding,
                                const std::string& image_path,
-                               float quality_score) {
+                               float quality_score,
+                               const std::string& model_tag) {
   if (db_ == nullptr) {
     return false;
   }
@@ -188,7 +216,8 @@ bool Database::insertEmbedding(int person_id,
 
   sqlite3_stmt* stmt = nullptr;
   constexpr const char* kSql =
-      "INSERT INTO embeddings(person_id, embedding, image_path, quality_score, created_at) VALUES(?, ?, ?, ?, ?);";
+      "INSERT INTO embeddings(person_id, embedding, image_path, quality_score, model_tag, created_at) "
+      "VALUES(?, ?, ?, ?, ?, ?);";
   if (sqlite3_prepare_v2(db_, kSql, -1, &stmt, nullptr) != SQLITE_OK) {
     return false;
   }
@@ -196,7 +225,8 @@ bool Database::insertEmbedding(int person_id,
   sqlite3_bind_blob(stmt, 2, blob.data(), static_cast<int>(blob.size()), SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 3, image_path.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_double(stmt, 4, static_cast<double>(quality_score));
-  sqlite3_bind_int64(stmt, 5, nowEpochSeconds());
+  sqlite3_bind_text(stmt, 5, model_tag.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int64(stmt, 6, nowEpochSeconds());
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
   return rc == SQLITE_DONE;
@@ -236,6 +266,7 @@ std::vector<StoredEmbedding> Database::loadAllEmbeddings() const {
   sqlite3_stmt* stmt = nullptr;
   constexpr const char* kSql = R"SQL(
 SELECT p.id, p.name, e.embedding, e.image_path, e.quality_score
+     , e.model_tag
 FROM embeddings e
 JOIN persons p ON p.id = e.person_id;
   )SQL";
@@ -255,10 +286,23 @@ JOIN persons p ON p.id = e.person_id;
     const unsigned char* path = sqlite3_column_text(stmt, 3);
     row.image_path = (path != nullptr) ? reinterpret_cast<const char*>(path) : "";
     row.quality_score = static_cast<float>(sqlite3_column_double(stmt, 4));
+    const unsigned char* model_tag = sqlite3_column_text(stmt, 5);
+    row.model_tag = (model_tag != nullptr) ? reinterpret_cast<const char*>(model_tag) : "";
     out.push_back(std::move(row));
   }
   sqlite3_finalize(stmt);
   return out;
+}
+
+bool Database::ensureEmbeddingsColumn(const std::string& column_name, const std::string& column_def) {
+  if (db_ == nullptr) {
+    return false;
+  }
+  if (tableHasColumn(db_, "embeddings", column_name)) {
+    return true;
+  }
+  const std::string sql = "ALTER TABLE embeddings ADD COLUMN " + column_name + " " + column_def + ";";
+  return execSql(db_, sql.c_str());
 }
 
 std::vector<std::uint8_t> Database::floatsToBlob(const std::vector<float>& vec) {
@@ -285,4 +329,3 @@ std::int64_t Database::nowEpochSeconds() {
 }
 
 }  // namespace asdun
-

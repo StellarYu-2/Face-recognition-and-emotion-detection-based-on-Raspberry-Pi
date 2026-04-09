@@ -26,12 +26,14 @@ class Database {
   bool insertEmbedding(int person_id,
                        const std::vector<float>& embedding,
                        const std::string& image_path,
-                       float quality_score);
+                       float quality_score,
+                       const std::string& model_tag);
 
   std::vector<std::string> listImagePathsByPerson(const std::string& name) const;
   std::vector<StoredEmbedding> loadAllEmbeddings() const;
 
  private:
+  bool ensureEmbeddingsColumn(const std::string& column_name, const std::string& column_def);
   static std::vector<std::uint8_t> floatsToBlob(const std::vector<float>& vec);
   static std::vector<float> blobToFloats(const void* data, int bytes);
   static std::int64_t nowEpochSeconds();

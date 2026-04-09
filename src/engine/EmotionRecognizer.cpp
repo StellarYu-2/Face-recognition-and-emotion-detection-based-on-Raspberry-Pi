@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 
 #include <opencv2/imgproc.hpp>
 
@@ -27,9 +28,58 @@ float darkPixelRatio(const cv::Mat& gray, std::uint8_t threshold) {
   return static_cast<float>(cv::countNonZero(mask)) / static_cast<float>(mask.total());
 }
 
+#ifdef USE_NCNN
+int matElementCount(const ncnn::Mat& mat) {
+  if (mat.dims == 1) {
+    return mat.w;
+  }
+  if (mat.dims == 2) {
+    return mat.w * mat.h;
+  }
+  if (mat.dims == 3) {
+    return mat.w * mat.h * mat.c;
+  }
+  return 0;
+}
+#endif
+
+EmotionLabel indexToEmotion(int idx) {
+  switch (idx) {
+    case 0:
+      return EmotionLabel::Neutral;
+    case 1:
+      return EmotionLabel::Happy;
+    case 2:
+      return EmotionLabel::Surprise;
+    case 3:
+      return EmotionLabel::Sad;
+    case 4:
+      return EmotionLabel::Angry;
+    case 5:
+      return EmotionLabel::Disgust;
+    case 6:
+      return EmotionLabel::Fear;
+    case 7:
+      return EmotionLabel::Contempt;
+    default:
+      return EmotionLabel::Unknown;
+  }
+}
+
 }  // namespace
 
-bool EmotionRecognizer::init(const std::string& /*model_param_path*/, const std::string& /*model_bin_path*/) {
+bool EmotionRecognizer::init(const std::string& model_param_path,
+                             const std::string& model_bin_path,
+                             int input_size,
+                             std::string input_blob_name,
+                             std::string output_blob_name) {
+  model_param_path_ = model_param_path;
+  model_bin_path_ = model_bin_path;
+  input_size_ = (input_size > 0) ? input_size : 64;
+  input_blob_name_ = std::move(input_blob_name);
+  output_blob_name_ = std::move(output_blob_name);
+  ncnn_ready_ = false;
+
   std::array<std::string, 2> smile_paths = {
       "/usr/share/opencv4/haarcascades/haarcascade_smile.xml",
       "/usr/share/opencv/haarcascades/haarcascade_smile.xml"};
@@ -40,6 +90,18 @@ bool EmotionRecognizer::init(const std::string& /*model_param_path*/, const std:
       break;
     }
   }
+
+#ifdef USE_NCNN
+  if (std::filesystem::exists(model_param_path_) && std::filesystem::exists(model_bin_path_)) {
+    net_.clear();
+    net_.opt.use_vulkan_compute = false;
+    net_.opt.lightmode = true;
+    net_.opt.num_threads = 4;
+    if (net_.load_param(model_param_path_.c_str()) == 0 && net_.load_model(model_bin_path_.c_str()) == 0) {
+      ncnn_ready_ = true;
+    }
+  }
+#endif
 
   initialized_ = true;
   return true;
@@ -52,6 +114,12 @@ EmotionResult EmotionRecognizer::infer(const cv::Mat& face_bgr) const {
     out.conf_pct = 0.0F;
     return out;
   }
+
+#ifdef USE_NCNN
+  if (ncnn_ready_) {
+    return inferWithNcnn(face_bgr);
+  }
+#endif
 
   const cv::Mat normalized = normalizeFace(face_bgr);
   const int width = normalized.cols;
@@ -104,6 +172,67 @@ EmotionResult EmotionRecognizer::infer(const cv::Mat& face_bgr) const {
   out.label = EmotionLabel::Neutral;
   out.conf_pct = clampPct(58.0F + std::max(0.0F, 30.0F - std::abs(global_mean - 118.0F) * 0.35F));
   return out;
+}
+
+EmotionResult EmotionRecognizer::inferWithNcnn(const cv::Mat& face_bgr) const {
+  EmotionResult out{};
+#ifdef USE_NCNN
+  const cv::Mat normalized = normalizeFace(face_bgr);
+  ncnn::Mat in = ncnn::Mat::from_pixels_resize(normalized.data,
+                                               ncnn::Mat::PIXEL_GRAY,
+                                               normalized.cols,
+                                               normalized.rows,
+                                               input_size_,
+                                               input_size_);
+
+  ncnn::Extractor ex = net_.create_extractor();
+  ex.set_light_mode(true);
+  ex.input(input_blob_name_.c_str(), in);
+
+  ncnn::Mat prob{};
+  int rc = ex.extract(output_blob_name_.c_str(), prob);
+  if (rc != 0) {
+    rc = ex.extract(0, prob);
+  }
+  if (rc != 0) {
+    out.label = EmotionLabel::Unknown;
+    out.conf_pct = 0.0F;
+    return out;
+  }
+
+  const int total = matElementCount(prob);
+  if (total <= 0) {
+    out.label = EmotionLabel::Unknown;
+    out.conf_pct = 0.0F;
+    return out;
+  }
+
+  const float* ptr = static_cast<const float*>(prob.data);
+  int best_idx = 0;
+  float best_score = ptr[0];
+  float sum_exp = 0.0F;
+  std::vector<float> logits(total, 0.0F);
+  for (int i = 0; i < total; ++i) {
+    logits[static_cast<std::size_t>(i)] = ptr[i];
+    if (ptr[i] > best_score) {
+      best_score = ptr[i];
+      best_idx = i;
+    }
+  }
+
+  for (const float x : logits) {
+    sum_exp += std::exp(x - best_score);
+  }
+  const float prob_pct = (sum_exp > 1e-6F) ? (100.0F / sum_exp) : 0.0F;
+  out.label = indexToEmotion(best_idx);
+  out.conf_pct = clampPct(prob_pct);
+  return out;
+#else
+  (void)face_bgr;
+  out.label = EmotionLabel::Unknown;
+  out.conf_pct = 0.0F;
+  return out;
+#endif
 }
 
 cv::Mat EmotionRecognizer::normalizeFace(const cv::Mat& face_bgr) {

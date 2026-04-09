@@ -5,10 +5,15 @@ camera_source: "0"
 frame_width: 640
 frame_height: 480
 frame_fps: 30
+enroll_target_images: 4
 
 # Pipeline schedule
-detect_interval: 3
-emotion_interval: 2
+detect_interval: 2
+recognition_interval: 4
+emotion_interval: 40
+max_inference_faces: 1
+recognition_crop_scale: 1.06
+debug_recognition: true
 
 # Enrollment quality gate
 min_face_area_ratio: 0.08
@@ -16,12 +21,12 @@ blur_threshold: 100.0
 quality_stable_frames: 3
 
 # Recognition threshold and confidence mapping
-match_threshold: 0.80
-sigmoid_tau: 0.08
+match_threshold: 1.17
+sigmoid_tau: 0.10
 
 # Tracking
 track_ttl: 10
-track_iou_threshold: 0.30
+track_iou_threshold: 0.20
 
 # Storage
 db_path: "./data/db/face_access.db"
@@ -30,3 +35,30 @@ images_root: "./data/images"
 # Haar cascade path on Raspberry Pi Debian
 face_cascade_path: "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
 
+# NCNN detector (current converted UltraFace model)
+detector_param_path: "./models/onnx_to_ncnn/face_detector.param"
+detector_bin_path: "./models/onnx_to_ncnn/face_detector.bin"
+detector_input_width: 320
+detector_input_height: 240
+detector_score_threshold: 0.55
+detector_nms_threshold: 0.18
+detector_input_blob: "in0"
+detector_score_blob: "out0"
+detector_bbox_blob: "out1"
+
+# NCNN face recognizer (current lightweight MobileFaceNet model)
+recognizer_param_path: "./models/onnx_to_ncnn/mobilefacenet.param"
+recognizer_bin_path: "./models/onnx_to_ncnn/mobilefacenet.bin"
+recognizer_input_size: 112
+recognizer_color_order: "bgr"
+recognizer_input_blob: "data"
+recognizer_output_blob: "fc1"
+
+# NCNN emotion classifier (current converted FER+ model)
+# Current class order:
+# 0 Neutral, 1 Happy, 2 Surprise, 3 Sad, 4 Angry, 5 Disgust, 6 Fear, 7 Contempt
+emotion_param_path: "./models/onnx_to_ncnn/emotion.param"
+emotion_bin_path: "./models/onnx_to_ncnn/emotion.bin"
+emotion_input_size: 64
+emotion_input_blob: "in0"
+emotion_output_blob: "out0"

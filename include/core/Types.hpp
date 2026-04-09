@@ -32,16 +32,19 @@ struct IdentityResult {
   float distance{1.0F};
   float conf_pct{0.0F};
   bool known{false};
+  int matched_sample_count{0};
+  std::string debug_summary{};
 };
 
 enum class EmotionLabel {
   Neutral = 0,
   Happy,
+  Surprise,
   Sad,
   Angry,
-  Surprise,
   Fear,
   Disgust,
+  Contempt,
   Unknown
 };
 
@@ -51,16 +54,18 @@ inline std::string emotionToString(EmotionLabel label) {
       return "Neutral";
     case EmotionLabel::Happy:
       return "Happy";
+    case EmotionLabel::Surprise:
+      return "Surprise";
     case EmotionLabel::Sad:
       return "Sad";
     case EmotionLabel::Angry:
       return "Angry";
-    case EmotionLabel::Surprise:
-      return "Surprise";
     case EmotionLabel::Fear:
       return "Fear";
     case EmotionLabel::Disgust:
       return "Disgust";
+    case EmotionLabel::Contempt:
+      return "Contempt";
     default:
       return "Unknown";
   }
@@ -91,7 +96,7 @@ struct StoredEmbedding {
   std::vector<float> embedding;
   std::string image_path;
   float quality_score{0.0F};
+  std::string model_tag;
 };
 
 }  // namespace asdun
-

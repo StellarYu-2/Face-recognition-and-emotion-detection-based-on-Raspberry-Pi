@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find . -type f \\\\\\(-name *.cpp -o -name *.hpp -o -name *.h -o -name *.yaml -o -name *.yml -o -name CMakeLists.txt -o -name *.md \\\\\\))"
+    ]
+  }
+}

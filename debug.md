@@ -94,6 +94,43 @@ cmake --build build -j4
 
 如果你是源码装在其它前缀（比如 `/opt/ncnn`），把路径替换成对应前缀。
 
+### 3.6 如果你需要把 ONNX 模型转换成 NCNN
+
+你当前项目已经使用 NCNN 推理，所以如果下载到的是 `.onnx` 模型，还需要 `pnnx` 工具。
+
+推荐直接安装：
+
+```bash
+python3 -m pip install --user -U pnnx
+```
+
+确认工具存在：
+
+```bash
+command -v pnnx || ls -l ~/.local/bin/pnnx
+ls -l ~/ncnn/build/tools/ncnnoptimize || true
+```
+
+如果你必须源码构建 `pnnx`，它通常需要单独处理，不一定会随着 `~/ncnn/build` 一起生成，所以不要再用 `~/ncnn/build/tools/pnnx` 这个路径判断。
+
+当前项目已经附带转换脚本：
+
+```bash
+cd /home/pi/asdun_pi
+chmod +x scripts/convert_models.sh
+./scripts/convert_models.sh
+```
+
+该脚本会把：
+- `models/version-RFB-320.onnx`
+- `models/arcfaceresnet100-8.onnx`
+- `models/emotion-ferplus-8.onnx`
+
+转换为：
+- `models/face_detector.param` / `models/face_detector.bin`
+- `models/face_recognizer.param` / `models/face_recognizer.bin`
+- `models/emotion.param` / `models/emotion.bin`
+
 ## 4. 代码同步（Windows -> 树莓派）
 
 ```powershell

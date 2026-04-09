@@ -20,21 +20,49 @@ namespace asdun {
 
 struct AppConfig {
   std::string camera_source{"0"};
-  int frame_width{640};
-  int frame_height{480};
+  int frame_width{480};
+  int frame_height{360};
   int frame_fps{30};
-  int detect_interval{3};
-  int emotion_interval{2};
+  int enroll_target_images{4};
+  int detect_interval{5};
+  int recognition_interval{20};
+  int emotion_interval{15};
+  int max_inference_faces{1};
+  float recognition_crop_scale{1.15F};
+  bool debug_recognition{true};
   float min_face_area_ratio{0.08F};
   float blur_threshold{100.0F};
   int quality_stable_frames{3};
   float match_threshold{0.8F};
   float sigmoid_tau{0.08F};
   int track_ttl{10};
-  float track_iou_threshold{0.3F};
+  float track_iou_threshold{0.2F};
   std::string db_path{"./data/db/face_access.db"};
   std::string images_root{"./data/images"};
   std::string face_cascade_path{"/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"};
+
+  std::string detector_param_path{"./models/face_detector.param"};
+  std::string detector_bin_path{"./models/face_detector.bin"};
+  int detector_input_width{320};
+  int detector_input_height{240};
+  float detector_score_threshold{0.7F};
+  float detector_nms_threshold{0.3F};
+  std::string detector_input_blob{"input"};
+  std::string detector_score_blob{"scores"};
+  std::string detector_bbox_blob{"boxes"};
+
+  std::string recognizer_param_path{"./models/onnx_to_ncnn/mobilefacenet.param"};
+  std::string recognizer_bin_path{"./models/onnx_to_ncnn/mobilefacenet.bin"};
+  int recognizer_input_size{112};
+  std::string recognizer_color_order{"rgb"};
+  std::string recognizer_input_blob{"data"};
+  std::string recognizer_output_blob{"fc1"};
+
+  std::string emotion_param_path{"./models/emotion.param"};
+  std::string emotion_bin_path{"./models/emotion.bin"};
+  int emotion_input_size{64};
+  std::string emotion_input_blob{"input"};
+  std::string emotion_output_blob{"output"};
 };
 
 class App {

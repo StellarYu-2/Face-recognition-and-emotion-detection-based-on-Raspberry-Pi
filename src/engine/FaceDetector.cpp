@@ -2,14 +2,70 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <filesystem>
 
 #include <opencv2/imgproc.hpp>
 
 namespace asdun {
 
-FaceDetector::FaceDetector(std::string cascade_path) : cascade_path_(std::move(cascade_path)) {}
+namespace {
+
+#ifdef USE_NCNN
+int matRows(const ncnn::Mat& mat) {
+  if (mat.dims == 1) {
+    return 1;
+  }
+  if (mat.dims == 2) {
+    return mat.h;
+  }
+  if (mat.dims == 3) {
+    return mat.c;
+  }
+  return 0;
+}
+
+const float kCenterVariance = 0.1F;
+const float kSizeVariance = 0.2F;
+#endif
+
+}  // namespace
+
+FaceDetector::FaceDetector(std::string cascade_path,
+                           std::string model_param_path,
+                           std::string model_bin_path,
+                           int input_width,
+                           int input_height,
+                           float score_threshold,
+                           float nms_threshold,
+                           std::string input_blob_name,
+                           std::string score_blob_name,
+                           std::string bbox_blob_name)
+    : cascade_path_(std::move(cascade_path)),
+      model_param_path_(std::move(model_param_path)),
+      model_bin_path_(std::move(model_bin_path)),
+      input_width_(input_width > 0 ? input_width : 320),
+      input_height_(input_height > 0 ? input_height : 240),
+      score_threshold_(score_threshold),
+      nms_threshold_(nms_threshold),
+      input_blob_name_(std::move(input_blob_name)),
+      score_blob_name_(std::move(score_blob_name)),
+      bbox_blob_name_(std::move(bbox_blob_name)) {}
 
 bool FaceDetector::init() {
+#ifdef USE_NCNN
+  if (std::filesystem::exists(model_param_path_) && std::filesystem::exists(model_bin_path_)) {
+    net_.clear();
+    net_.opt.use_vulkan_compute = false;
+    net_.opt.lightmode = true;
+    net_.opt.num_threads = 4;
+    if (net_.load_param(model_param_path_.c_str()) == 0 && net_.load_model(model_bin_path_.c_str()) == 0) {
+      priors_cache_ = generatePriors();
+      ncnn_ready_ = true;
+    }
+  }
+#endif
+
   std::array<std::string, 3> frontal_paths = {
       cascade_path_,
       "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
@@ -39,10 +95,19 @@ bool FaceDetector::init() {
     }
   }
 
-  return initialized_;
+  return ncnn_ready_ || initialized_;
 }
 
 std::vector<Detection> FaceDetector::detect(const cv::Mat& frame_bgr) const {
+#ifdef USE_NCNN
+  if (ncnn_ready_) {
+    const auto dets = detectWithNcnn(frame_bgr);
+    if (!dets.empty()) {
+      return dets;
+    }
+  }
+#endif
+
   std::vector<Detection> out;
   if (!initialized_ || frame_bgr.empty()) {
     return out;
@@ -58,13 +123,137 @@ std::vector<Detection> FaceDetector::detect(const cv::Mat& frame_bgr) const {
     detectWithCascade(profile_cascade_, gray, true, out);
   }
 
-  // 只有在标准角度没有命中时，才回退到轻度旋转检测，避免 CPU 压力持续飙升。
   if (out.empty()) {
     detectWithRotation(frontal_cascade_, gray, -18.0, out);
     detectWithRotation(frontal_cascade_, gray, 18.0, out);
   }
 
   return suppressDuplicates(out);
+}
+
+std::vector<Detection> FaceDetector::detectWithNcnn(const cv::Mat& frame_bgr) const {
+  std::vector<Detection> out;
+#ifdef USE_NCNN
+  if (!ncnn_ready_ || frame_bgr.empty()) {
+    return out;
+  }
+
+  ncnn::Mat in = ncnn::Mat::from_pixels_resize(frame_bgr.data,
+                                               ncnn::Mat::PIXEL_BGR2RGB,
+                                               frame_bgr.cols,
+                                               frame_bgr.rows,
+                                               input_width_,
+                                               input_height_);
+  const float mean_vals[3] = {127.0F, 127.0F, 127.0F};
+  const float norm_vals[3] = {1.0F / 128.0F, 1.0F / 128.0F, 1.0F / 128.0F};
+  in.substract_mean_normalize(mean_vals, norm_vals);
+
+  ncnn::Extractor ex = net_.create_extractor();
+  ex.set_light_mode(true);
+  ex.input(input_blob_name_.c_str(), in);
+
+  ncnn::Mat scores{};
+  ncnn::Mat boxes{};
+  int rc_scores = ex.extract(score_blob_name_.c_str(), scores);
+  if (rc_scores != 0) {
+    rc_scores = ex.extract(0, scores);
+  }
+  int rc_boxes = ex.extract(bbox_blob_name_.c_str(), boxes);
+  if (rc_boxes != 0) {
+    rc_boxes = ex.extract(1, boxes);
+  }
+  if (rc_scores != 0 || rc_boxes != 0) {
+    return out;
+  }
+
+  const int rows = std::min({matRows(scores), matRows(boxes), static_cast<int>(priors_cache_.size())});
+  for (int i = 0; i < rows; ++i) {
+    const float* score_ptr = scores.row(i);
+    const float* box_ptr = boxes.row(i);
+    const float score = (scores.w >= 2) ? score_ptr[1] : score_ptr[0];
+    if (score < score_threshold_) {
+      continue;
+    }
+
+    const auto& prior = priors_cache_[static_cast<std::size_t>(i)];
+    const float x_center = box_ptr[0] * kCenterVariance * prior.width + prior.center_x;
+    const float y_center = box_ptr[1] * kCenterVariance * prior.height + prior.center_y;
+    const float w = std::exp(box_ptr[2] * kSizeVariance) * prior.width;
+    const float h = std::exp(box_ptr[3] * kSizeVariance) * prior.height;
+
+    const float x_min = (x_center - w * 0.5F) * static_cast<float>(frame_bgr.cols);
+    const float y_min = (y_center - h * 0.5F) * static_cast<float>(frame_bgr.rows);
+    const float x_max = (x_center + w * 0.5F) * static_cast<float>(frame_bgr.cols);
+    const float y_max = (y_center + h * 0.5F) * static_cast<float>(frame_bgr.rows);
+
+    cv::Rect rect(static_cast<int>(std::round(x_min)),
+                  static_cast<int>(std::round(y_min)),
+                  static_cast<int>(std::round(x_max - x_min)),
+                  static_cast<int>(std::round(y_max - y_min)));
+    rect &= cv::Rect(0, 0, frame_bgr.cols, frame_bgr.rows);
+    if (rect.width > 0 && rect.height > 0) {
+      out.push_back(Detection{rect, score});
+    }
+  }
+
+  return nms(out, nms_threshold_);
+#else
+  (void)frame_bgr;
+  return out;
+#endif
+}
+
+std::vector<FaceDetector::PriorBox> FaceDetector::generatePriors() const {
+  std::vector<PriorBox> priors;
+
+  const std::array<std::vector<int>, 4> min_boxes = {
+      std::vector<int>{10, 16, 24},
+      std::vector<int>{32, 48},
+      std::vector<int>{64, 96},
+      std::vector<int>{128, 192, 256}};
+  const std::array<int, 4> strides = {8, 16, 32, 64};
+
+  for (std::size_t idx = 0; idx < strides.size(); ++idx) {
+    const int stride = strides[idx];
+    const int feature_map_w = static_cast<int>(std::ceil(static_cast<float>(input_width_) / static_cast<float>(stride)));
+    const int feature_map_h = static_cast<int>(std::ceil(static_cast<float>(input_height_) / static_cast<float>(stride)));
+    for (int h = 0; h < feature_map_h; ++h) {
+      for (int w = 0; w < feature_map_w; ++w) {
+        for (const int min_box : min_boxes[idx]) {
+          PriorBox prior{};
+          prior.center_x = (static_cast<float>(w) + 0.5F) / static_cast<float>(feature_map_w);
+          prior.center_y = (static_cast<float>(h) + 0.5F) / static_cast<float>(feature_map_h);
+          prior.width = static_cast<float>(min_box) / static_cast<float>(input_width_);
+          prior.height = static_cast<float>(min_box) / static_cast<float>(input_height_);
+          priors.push_back(prior);
+        }
+      }
+    }
+  }
+  return priors;
+}
+
+std::vector<Detection> FaceDetector::nms(const std::vector<Detection>& detections, float nms_threshold) {
+  std::vector<Detection> sorted = detections;
+  std::sort(sorted.begin(), sorted.end(), [](const Detection& a, const Detection& b) {
+    return a.det_score > b.det_score;
+  });
+
+  std::vector<Detection> kept;
+  kept.reserve(sorted.size());
+  for (const auto& det : sorted) {
+    bool overlapped = false;
+    for (const auto& existing : kept) {
+      if (iou(det.box, existing.box) > nms_threshold) {
+        overlapped = true;
+        break;
+      }
+    }
+    if (!overlapped) {
+      kept.push_back(det);
+    }
+  }
+  return kept;
 }
 
 void FaceDetector::detectWithCascade(cv::CascadeClassifier& cascade,

@@ -9,6 +9,15 @@
 
 namespace asdun {
 
+namespace {
+
+bool parseBoolValue(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
+}  // namespace
+
 App::App(std::string config_path) : config_path_(std::move(config_path)), sm_(AppState::MainMenu) {}
 
 int App::run() {
@@ -93,10 +102,20 @@ bool App::loadConfig() {
         config_.frame_height = std::stoi(value);
       } else if (key == "frame_fps") {
         config_.frame_fps = std::stoi(value);
+      } else if (key == "enroll_target_images") {
+        config_.enroll_target_images = std::stoi(value);
       } else if (key == "detect_interval") {
         config_.detect_interval = std::stoi(value);
+      } else if (key == "recognition_interval") {
+        config_.recognition_interval = std::stoi(value);
       } else if (key == "emotion_interval") {
         config_.emotion_interval = std::stoi(value);
+      } else if (key == "max_inference_faces") {
+        config_.max_inference_faces = std::stoi(value);
+      } else if (key == "recognition_crop_scale") {
+        config_.recognition_crop_scale = std::stof(value);
+      } else if (key == "debug_recognition") {
+        config_.debug_recognition = parseBoolValue(value);
       } else if (key == "min_face_area_ratio") {
         config_.min_face_area_ratio = std::stof(value);
       } else if (key == "blur_threshold") {
@@ -117,6 +136,46 @@ bool App::loadConfig() {
         config_.images_root = value;
       } else if (key == "face_cascade_path") {
         config_.face_cascade_path = value;
+      } else if (key == "detector_param_path") {
+        config_.detector_param_path = value;
+      } else if (key == "detector_bin_path") {
+        config_.detector_bin_path = value;
+      } else if (key == "detector_input_width") {
+        config_.detector_input_width = std::stoi(value);
+      } else if (key == "detector_input_height") {
+        config_.detector_input_height = std::stoi(value);
+      } else if (key == "detector_score_threshold") {
+        config_.detector_score_threshold = std::stof(value);
+      } else if (key == "detector_nms_threshold") {
+        config_.detector_nms_threshold = std::stof(value);
+      } else if (key == "detector_input_blob") {
+        config_.detector_input_blob = value;
+      } else if (key == "detector_score_blob") {
+        config_.detector_score_blob = value;
+      } else if (key == "detector_bbox_blob") {
+        config_.detector_bbox_blob = value;
+      } else if (key == "recognizer_param_path") {
+        config_.recognizer_param_path = value;
+      } else if (key == "recognizer_bin_path") {
+        config_.recognizer_bin_path = value;
+      } else if (key == "recognizer_input_size") {
+        config_.recognizer_input_size = std::stoi(value);
+      } else if (key == "recognizer_color_order") {
+        config_.recognizer_color_order = value;
+      } else if (key == "recognizer_input_blob") {
+        config_.recognizer_input_blob = value;
+      } else if (key == "recognizer_output_blob") {
+        config_.recognizer_output_blob = value;
+      } else if (key == "emotion_param_path") {
+        config_.emotion_param_path = value;
+      } else if (key == "emotion_bin_path") {
+        config_.emotion_bin_path = value;
+      } else if (key == "emotion_input_size") {
+        config_.emotion_input_size = std::stoi(value);
+      } else if (key == "emotion_input_blob") {
+        config_.emotion_input_blob = value;
+      } else if (key == "emotion_output_blob") {
+        config_.emotion_output_blob = value;
       }
     } catch (...) {
       std::cerr << "[App] 忽略错误配置项: " << key << "=" << value << std::endl;
@@ -129,7 +188,16 @@ bool App::initComponents() {
   camera_ = std::make_unique<CameraManager>(config_.camera_source, config_.frame_width, config_.frame_height, config_.frame_fps);
   database_ = std::make_unique<Database>();
   file_store_ = std::make_unique<FileStore>(config_.images_root);
-  detector_ = std::make_unique<FaceDetector>(config_.face_cascade_path);
+  detector_ = std::make_unique<FaceDetector>(config_.face_cascade_path,
+                                             config_.detector_param_path,
+                                             config_.detector_bin_path,
+                                             config_.detector_input_width,
+                                             config_.detector_input_height,
+                                             config_.detector_score_threshold,
+                                             config_.detector_nms_threshold,
+                                             config_.detector_input_blob,
+                                             config_.detector_score_blob,
+                                             config_.detector_bbox_blob);
   track_manager_ = std::make_unique<TrackManager>(config_.track_ttl, config_.track_iou_threshold);
   quality_gate_ =
       std::make_unique<FaceQualityGate>(config_.min_face_area_ratio, config_.blur_threshold, config_.quality_stable_frames);
@@ -155,13 +223,27 @@ bool App::initComponents() {
     return false;
   }
   embedding_store_ = std::make_unique<EmbeddingStore>(*database_);
-  embedding_store_->reload();
 
   if (!detector_->init()) {
     std::cerr << "[FaceDetector] 初始化失败，请检查 face_cascade_path 配置。" << std::endl;
     return false;
   }
-  if (!emotion_recognizer_.init()) {
+  if (!recognizer_.init(config_.recognizer_param_path,
+                        config_.recognizer_bin_path,
+                        config_.recognizer_input_size,
+                        config_.recognizer_input_blob,
+                        config_.recognizer_output_blob,
+                        parseBoolValue(config_.recognizer_color_order == "bgr" ? "false" : "true"))) {
+    std::cerr << "[FaceRecognizer] 初始化失败。" << std::endl;
+    return false;
+  }
+  embedding_store_->setActiveModelTag(recognizer_.modelTag());
+  embedding_store_->reload();
+  if (!emotion_recognizer_.init(config_.emotion_param_path,
+                                config_.emotion_bin_path,
+                                config_.emotion_input_size,
+                                config_.emotion_input_blob,
+                                config_.emotion_output_blob)) {
     std::cerr << "[EmotionRecognizer] 初始化失败。" << std::endl;
     return false;
   }
@@ -172,7 +254,11 @@ bool App::initComponents() {
                                                   *embedding_store_,
                                                   *track_manager_,
                                                   config_.detect_interval,
+                                                  config_.recognition_interval,
                                                   config_.emotion_interval,
+                                                  config_.max_inference_faces,
+                                                  config_.recognition_crop_scale,
+                                                  config_.debug_recognition,
                                                   config_.match_threshold,
                                                   config_.sigmoid_tau);
   return true;
@@ -238,10 +324,11 @@ void App::handleEnrollment() {
   }
 
   FaceQualityGate gate(config_.min_face_area_ratio, config_.blur_threshold, config_.quality_stable_frames);
+  const int target_images = std::max(1, config_.enroll_target_images);
   int captured = 0;
   std::cout << "[Enrollment] 按 s 抓拍，按 q 退出。需要有效样本 2 张。" << std::endl;
 
-  while (captured < 2) {
+  while (captured < target_images) {
     FramePacket frame{};
     if (!camera_->getLatestFrame(frame, 200)) {
       continue;
@@ -265,7 +352,7 @@ void App::handleEnrollment() {
       qres = gate.evaluate(frame.bgr, best_face);
       ready = qres.valid;
       std::ostringstream oss;
-      oss << "Captured " << captured << "/2 | " << qres.reason << " | area=" << qres.area_ratio
+      oss << "Captured " << captured << "/" << target_images << " | " << qres.reason << " | area=" << qres.area_ratio
           << " blur=" << qres.blur_score;
       status = oss.str();
     }
@@ -297,7 +384,7 @@ void App::handleEnrollment() {
         std::filesystem::remove(image_path, ec);
         continue;
       }
-      if (!database_->insertEmbedding(person_id, emb, image_path, qres.blur_score)) {
+      if (!database_->insertEmbedding(person_id, emb, image_path, qres.blur_score, recognizer_.modelTag())) {
         std::cerr << "[Enrollment] 特征入库失败。" << std::endl;
         std::error_code ec;
         std::filesystem::remove(image_path, ec);
