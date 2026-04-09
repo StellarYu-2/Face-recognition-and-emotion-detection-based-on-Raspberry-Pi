@@ -17,6 +17,7 @@ struct Track {
   std::array<float, 4> smoothed_emotion_probs{{0.0F, 0.0F, 0.0F, 0.0F}};
   bool emotion_initialized{false};
   int ttl{0};
+  int detection_hits{0};
   int pending_identity_hits{0};
   int pending_emotion_hits{0};
   int unknown_identity_streak{0};

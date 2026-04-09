@@ -362,7 +362,7 @@ void App::handleEnrollment() {
   FaceQualityGate gate(config_.min_face_area_ratio, config_.blur_threshold, config_.quality_stable_frames);
   const int target_images = std::max(1, config_.enroll_target_images);
   int captured = 0;
-  std::cout << "[Enrollment] 按 s 抓拍，按 q 退出。需要有效样本 2 张。" << std::endl;
+  std::cout << "[Enrollment] 按 s 抓拍，按 q 退出。需要有效样本 " << target_images << " 张。" << std::endl;
 
   while (captured < target_images) {
     FramePacket frame{};
@@ -427,7 +427,7 @@ void App::handleEnrollment() {
         continue;
       }
       captured++;
-      std::cout << "[Enrollment] 抓拍成功: " << captured << "/2" << std::endl;
+      std::cout << "[Enrollment] 抓拍成功: " << captured << "/" << target_images << std::endl;
     }
   }
 

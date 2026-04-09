@@ -39,7 +39,7 @@ class CameraManager {
   FramePacket latest_frame_{};
   bool has_frame_{false};
   std::uint64_t frame_counter_{0};
+  std::uint64_t last_delivered_frame_id_{0};
 };
 
 }  // namespace asdun
-

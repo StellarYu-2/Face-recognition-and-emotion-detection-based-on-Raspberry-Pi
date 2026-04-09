@@ -122,6 +122,7 @@ bool CameraManager::start() {
   {
     std::lock_guard<std::mutex> lock(frame_mutex_);
     has_frame_ = false;
+    last_delivered_frame_id_ = 0;
   }
   running_.store(true);
   capture_thread_ = std::thread(&CameraManager::captureLoop, this);
@@ -141,11 +142,14 @@ void CameraManager::stop() {
 
 bool CameraManager::getLatestFrame(FramePacket& out, std::uint32_t timeout_ms) {
   std::unique_lock<std::mutex> lock(frame_mutex_);
-  const bool got = frame_cv_.wait_for(lock, std::chrono::milliseconds(timeout_ms), [this] { return has_frame_ || !running_.load(); });
+  const bool got = frame_cv_.wait_for(lock, std::chrono::milliseconds(timeout_ms), [this] {
+    return !running_.load() || (has_frame_ && latest_frame_.frame_id != last_delivered_frame_id_);
+  });
   if (!got || !has_frame_) {
     return false;
   }
   out = latest_frame_;
+  last_delivered_frame_id_ = latest_frame_.frame_id;
   return true;
 }
 

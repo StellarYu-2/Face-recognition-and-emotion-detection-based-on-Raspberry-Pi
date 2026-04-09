@@ -14,6 +14,8 @@ namespace {
 constexpr int kIdentityConfirmHits = 2;
 constexpr int kIdentitySwitchConfirmHits = 4;
 constexpr int kIdentityUnknownClearHits = 3;
+constexpr int kTrackConfirmHits = 3;
+constexpr int kTrackMaxHits = 6;
 constexpr float kIdentitySwitchMinMargin = 0.09F;
 constexpr float kIdentitySwitchMinDistanceGain = 0.05F;
 constexpr float kIdentitySwitchConfBoost = 10.0F;
@@ -237,6 +239,7 @@ void TrackManager::updateWithDetections(const std::vector<Detection>& detections
       tr.last_frame_id = frame_id;
       tr.last_update_ms = ts_ms;
       tr.ttl = max_ttl_;
+      tr.detection_hits = std::min(tr.detection_hits + 1, kTrackMaxHits);
 
       if (!new_id.measured) {
         tr.unknown_identity_streak = 0;
@@ -307,6 +310,7 @@ void TrackManager::updateWithDetections(const std::vector<Detection>& detections
       tr.pending_emotion = EmotionResult{};
       tr.smoothed_emotion_probs = {{0.0F, 0.0F, 0.0F, 0.0F}};
       tr.emotion_initialized = false;
+      tr.detection_hits = 1;
       tr.pending_identity_hits = 0;
       tr.pending_emotion_hits = 0;
       tr.unknown_identity_streak = 0;
@@ -320,6 +324,7 @@ void TrackManager::updateWithDetections(const std::vector<Detection>& detections
   for (std::size_t t = 0; t < old_track_count; ++t) {
     if (!track_taken[t]) {
       tracks_[t].ttl -= 1;
+      tracks_[t].detection_hits = std::max(0, tracks_[t].detection_hits - 1);
       tracks_[t].last_frame_id = frame_id;
       tracks_[t].last_update_ms = ts_ms;
     }
@@ -350,6 +355,9 @@ std::vector<TrackState> TrackManager::snapshot() const {
   std::vector<TrackState> out;
   out.reserve(tracks_.size());
   for (const auto& tr : tracks_) {
+    if (tr.detection_hits < kTrackConfirmHits) {
+      continue;
+    }
     TrackState s{};
     s.track_id = tr.id;
     s.box = tr.box;

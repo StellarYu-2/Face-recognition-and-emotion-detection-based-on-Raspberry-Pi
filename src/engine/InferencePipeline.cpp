@@ -23,6 +23,46 @@ float laplacianVariance(const cv::Mat& bgr) {
   return static_cast<float>(stddev[0] * stddev[0]);
 }
 
+float adjustMatchThreshold(float base_threshold,
+                           int min_face_side,
+                           int min_face_size,
+                           float blur_score,
+                           float blur_threshold) {
+  float adjusted = base_threshold;
+
+  if (min_face_side < (min_face_size + 20)) {
+    adjusted -= 0.05F;
+  }
+  if (min_face_side < (min_face_size + 8)) {
+    adjusted -= 0.03F;
+  }
+  if (blur_score < (blur_threshold * 1.8F)) {
+    adjusted -= 0.03F;
+  }
+  if (blur_score < (blur_threshold * 1.2F)) {
+    adjusted -= 0.02F;
+  }
+
+  return std::clamp(adjusted, 0.88F, base_threshold);
+}
+
+float adjustMarginThreshold(float base_margin_threshold,
+                            int min_face_side,
+                            int min_face_size,
+                            float blur_score,
+                            float blur_threshold) {
+  float adjusted = base_margin_threshold;
+
+  if (min_face_side < (min_face_size + 20)) {
+    adjusted += 0.02F;
+  }
+  if (blur_score < (blur_threshold * 1.8F)) {
+    adjusted += 0.015F;
+  }
+
+  return std::clamp(adjusted, base_margin_threshold, base_margin_threshold + 0.05F);
+}
+
 }  // namespace
 
 InferencePipeline::InferencePipeline(FaceDetector& detector,
@@ -134,21 +174,31 @@ RecognitionResult InferencePipeline::process(const FramePacket& frame) {
       if (do_recognize) {
         IdentityResult id{};
         const float blur_score = laplacianVariance(recognition_face);
+        const int min_face_side = std::min(recognition_rect.width, recognition_rect.height);
         const bool recognition_quality_ok =
             recognition_rect.width >= recognition_min_face_size_ && recognition_rect.height >= recognition_min_face_size_ &&
             blur_score >= recognition_blur_threshold_ && det.det_score >= 0.50F;
         if (recognition_quality_ok) {
+          const float dynamic_match_threshold =
+              adjustMatchThreshold(match_threshold_, min_face_side, recognition_min_face_size_, blur_score, recognition_blur_threshold_);
+          const float dynamic_margin_threshold = adjustMarginThreshold(
+              recognition_margin_threshold_, min_face_side, recognition_min_face_size_, blur_score, recognition_blur_threshold_);
           id = embedding_store_.match(recognizer_.extractEmbedding(recognition_face),
-                                      match_threshold_,
+                                      dynamic_match_threshold,
                                       sigmoid_tau_,
-                                      recognition_margin_threshold_);
+                                      dynamic_margin_threshold);
+          if (!id.debug_summary.empty()) {
+            id.debug_summary += " match_thr=" + std::to_string(dynamic_match_threshold) +
+                                " margin_thr=" + std::to_string(dynamic_margin_threshold) +
+                                " det_score=" + std::to_string(det.det_score);
+          }
         } else {
           id.debug_summary = "skipped_quality area=" + std::to_string(det.box.area()) + " blur=" + std::to_string(blur_score);
         }
         if (debug_recognition_) {
           std::cout << "[Recog] frame=" << frame.frame_id << " det=" << idx << " area=" << det.box.area()
                     << " name=" << id.name << " dist=" << id.distance << " conf=" << id.conf_pct
-                    << " " << id.debug_summary << std::endl;
+                    << " " << id.debug_summary << '\n';
         }
         identities.push_back(std::move(id));
       } else {
@@ -161,7 +211,7 @@ RecognitionResult InferencePipeline::process(const FramePacket& frame) {
         if (debug_emotion_) {
           std::cout << "[Emotion] frame=" << frame.frame_id << " det=" << idx << " area=" << det.box.area()
                     << " label=" << emotionToString(emotion.label) << " conf=" << emotion.conf_pct
-                    << " " << emotion.debug_summary << std::endl;
+                    << " " << emotion.debug_summary << '\n';
         }
         emotions.push_back(std::move(emotion));
       } else {
