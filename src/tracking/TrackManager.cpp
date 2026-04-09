@@ -1,8 +1,11 @@
 #include "tracking/TrackManager.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
+#include <numeric>
+#include <sstream>
 
 namespace asdun {
 
@@ -10,6 +13,173 @@ namespace {
 
 constexpr int kIdentityConfirmHits = 2;
 constexpr int kIdentityUnknownClearHits = 3;
+constexpr float kBoxSmoothAlpha = 0.38F;
+constexpr float kEmotionStableAlpha = 0.34F;
+constexpr float kEmotionSwitchAlpha = 0.62F;
+constexpr float kEmotionStrongSwitchAlpha = 0.74F;
+constexpr float kEmotionKeepMargin = 0.035F;
+
+cv::Rect smoothRect(const cv::Rect& old_rect, const cv::Rect& new_rect, float alpha) {
+  if (old_rect.width <= 0 || old_rect.height <= 0) {
+    return new_rect;
+  }
+  const float a = std::clamp(alpha, 0.0F, 1.0F);
+  auto blend = [a](int old_v, int new_v) {
+    return static_cast<int>(std::lround((1.0F - a) * static_cast<float>(old_v) + a * static_cast<float>(new_v)));
+  };
+
+  cv::Rect out(blend(old_rect.x, new_rect.x),
+               blend(old_rect.y, new_rect.y),
+               blend(old_rect.width, new_rect.width),
+               blend(old_rect.height, new_rect.height));
+  if (out.width <= 0 || out.height <= 0) {
+    return new_rect;
+  }
+  return out;
+}
+
+float blendValue(float old_value, float new_value, float alpha) {
+  const float a = std::clamp(alpha, 0.0F, 1.0F);
+  return (1.0F - a) * old_value + a * new_value;
+}
+
+int emotionIndex(EmotionLabel label) {
+  switch (label) {
+    case EmotionLabel::Neutral:
+      return 0;
+    case EmotionLabel::Happy:
+    case EmotionLabel::Surprise:
+      return 1;
+    case EmotionLabel::Sad:
+    case EmotionLabel::Fear:
+      return 2;
+    case EmotionLabel::Angry:
+    case EmotionLabel::Disgust:
+    case EmotionLabel::Contempt:
+      return 3;
+    default:
+      return -1;
+  }
+}
+
+EmotionLabel indexToEmotionLabel(int idx) {
+  switch (idx) {
+    case 0:
+      return EmotionLabel::Neutral;
+    case 1:
+      return EmotionLabel::Happy;
+    case 2:
+      return EmotionLabel::Sad;
+    case 3:
+      return EmotionLabel::Angry;
+    default:
+      return EmotionLabel::Unknown;
+  }
+}
+
+std::array<float, 4> normalizeEmotionScores(std::array<float, 4> scores) {
+  for (float& score : scores) {
+    score = std::max(0.0F, score);
+  }
+  const float sum = std::accumulate(scores.begin(), scores.end(), 0.0F);
+  if (sum <= 1e-6F) {
+    return {{0.0F, 0.0F, 0.0F, 0.0F}};
+  }
+  for (float& score : scores) {
+    score /= sum;
+  }
+  return scores;
+}
+
+std::array<float, 4> emotionScoresFromResult(const EmotionResult& emo) {
+  auto scores = normalizeEmotionScores(emo.grouped_probs);
+  const float sum = std::accumulate(scores.begin(), scores.end(), 0.0F);
+  if (sum > 1e-6F) {
+    return scores;
+  }
+
+  const int idx = emotionIndex(emo.label);
+  if (idx < 0) {
+    return {{0.0F, 0.0F, 0.0F, 0.0F}};
+  }
+
+  const float winner = std::clamp(emo.conf_pct / 100.0F, 0.55F, 0.99F);
+  const float rest = (1.0F - winner) / 3.0F;
+  scores.fill(rest);
+  scores[static_cast<std::size_t>(idx)] = winner;
+  return normalizeEmotionScores(scores);
+}
+
+int dominantEmotionIndex(const std::array<float, 4>& scores) {
+  const auto it = std::max_element(scores.begin(), scores.end());
+  if (it == scores.end() || *it <= 1e-6F) {
+    return -1;
+  }
+  return static_cast<int>(std::distance(scores.begin(), it));
+}
+
+float dominantEmotionScore(const std::array<float, 4>& scores) {
+  const int idx = dominantEmotionIndex(scores);
+  return (idx >= 0) ? scores[static_cast<std::size_t>(idx)] : 0.0F;
+}
+
+void updateEmotionState(Track& tr, const EmotionResult& new_emo) {
+  const auto raw_scores = emotionScoresFromResult(new_emo);
+  if (dominantEmotionIndex(raw_scores) < 0) {
+    return;
+  }
+
+  if (!tr.emotion_initialized) {
+    tr.smoothed_emotion_probs = raw_scores;
+    tr.emotion = new_emo;
+    tr.emotion.label = indexToEmotionLabel(dominantEmotionIndex(raw_scores));
+    tr.emotion.conf_pct = std::clamp(dominantEmotionScore(raw_scores) * 100.0F, 0.0F, 99.0F);
+    tr.emotion.grouped_probs = raw_scores;
+    tr.emotion_initialized = true;
+    tr.pending_emotion = EmotionResult{};
+    tr.pending_emotion_hits = 0;
+    return;
+  }
+
+  const int current_idx = dominantEmotionIndex(tr.smoothed_emotion_probs);
+  const int raw_idx = dominantEmotionIndex(raw_scores);
+  float alpha = (raw_idx == current_idx) ? kEmotionStableAlpha : kEmotionSwitchAlpha;
+  if (raw_idx != current_idx && raw_idx >= 0 && raw_scores[static_cast<std::size_t>(raw_idx)] >= 0.55F) {
+    alpha = kEmotionStrongSwitchAlpha;
+  }
+
+  for (std::size_t i = 0; i < tr.smoothed_emotion_probs.size(); ++i) {
+    tr.smoothed_emotion_probs[i] = blendValue(tr.smoothed_emotion_probs[i], raw_scores[i], alpha);
+  }
+  tr.smoothed_emotion_probs = normalizeEmotionScores(tr.smoothed_emotion_probs);
+
+  int display_idx = dominantEmotionIndex(tr.smoothed_emotion_probs);
+  if (display_idx < 0) {
+    return;
+  }
+
+  if (current_idx >= 0 && display_idx != current_idx) {
+    const float best_score = tr.smoothed_emotion_probs[static_cast<std::size_t>(display_idx)];
+    const float current_score = tr.smoothed_emotion_probs[static_cast<std::size_t>(current_idx)];
+    if (best_score < current_score + kEmotionKeepMargin && raw_idx != display_idx) {
+      display_idx = current_idx;
+    }
+  }
+
+  tr.emotion.label = indexToEmotionLabel(display_idx);
+  tr.emotion.conf_pct =
+      std::clamp(tr.smoothed_emotion_probs[static_cast<std::size_t>(display_idx)] * 100.0F, 0.0F, 99.0F);
+  tr.emotion.grouped_probs = tr.smoothed_emotion_probs;
+
+  std::ostringstream debug;
+  if (!new_emo.debug_summary.empty()) {
+    debug << new_emo.debug_summary << " ";
+  }
+  debug << "smooth_calm=" << tr.smoothed_emotion_probs[0] << " smooth_happy=" << tr.smoothed_emotion_probs[1]
+        << " smooth_sad=" << tr.smoothed_emotion_probs[2] << " smooth_angry=" << tr.smoothed_emotion_probs[3]
+        << " alpha=" << alpha;
+  tr.emotion.debug_summary = debug.str();
+}
 
 }  // namespace
 
@@ -59,16 +229,19 @@ void TrackManager::updateWithDetections(const std::vector<Detection>& detections
 
     if (track_idx >= 0) {
       Track& tr = tracks_[static_cast<std::size_t>(track_idx)];
-      tr.box = detections[d].box;
+      tr.box = smoothRect(tr.box, detections[d].box, kBoxSmoothAlpha);
       tr.last_frame_id = frame_id;
       tr.last_update_ms = ts_ms;
       tr.ttl = max_ttl_;
 
-      if (new_id.known) {
+      if (!new_id.measured) {
+        tr.unknown_identity_streak = 0;
+      } else if (new_id.known) {
         tr.unknown_identity_streak = 0;
         if (tr.identity.known && tr.identity.name == new_id.name) {
           tr.identity.conf_pct = ema(tr.identity.conf_pct, new_id.conf_pct, 0.35F);
           tr.identity.distance = ema(tr.identity.distance, new_id.distance, 0.35F);
+          tr.identity.measured = true;
           tr.identity.matched_sample_count = new_id.matched_sample_count;
           tr.identity.debug_summary = new_id.debug_summary;
           tr.pending_identity = IdentityResult{};
@@ -106,23 +279,24 @@ void TrackManager::updateWithDetections(const std::vector<Detection>& detections
         }
       }
 
-      if (tr.emotion.label == new_emo.label) {
-        tr.emotion.conf_pct = ema(tr.emotion.conf_pct, new_emo.conf_pct, 0.35F);
-      } else if (new_emo.conf_pct > tr.emotion.conf_pct + 10.0F) {
-        tr.emotion = new_emo;
-      }
+      updateEmotionState(tr, new_emo);
     } else {
       Track tr{};
       tr.id = next_track_id_++;
       tr.box = detections[d].box;
       tr.identity = new_id;
-      tr.emotion = new_emo;
+      tr.emotion = EmotionResult{};
       tr.ttl = max_ttl_;
       tr.pending_identity = IdentityResult{};
+      tr.pending_emotion = EmotionResult{};
+      tr.smoothed_emotion_probs = {{0.0F, 0.0F, 0.0F, 0.0F}};
+      tr.emotion_initialized = false;
       tr.pending_identity_hits = 0;
+      tr.pending_emotion_hits = 0;
       tr.unknown_identity_streak = 0;
       tr.last_frame_id = frame_id;
       tr.last_update_ms = ts_ms;
+      updateEmotionState(tr, new_emo);
       tracks_.push_back(std::move(tr));
     }
   }
@@ -151,11 +325,7 @@ void TrackManager::updateEmotionsByTrackOrder(const std::vector<EmotionResult>& 
   for (std::size_t i = 0; i < n; ++i) {
     auto& tr = tracks_[i];
     const auto& e = emotions[i];
-    if (tr.emotion.label == e.label) {
-      tr.emotion.conf_pct = ema(tr.emotion.conf_pct, e.conf_pct, 0.35F);
-    } else if (e.conf_pct > tr.emotion.conf_pct + 8.0F) {
-      tr.emotion = e;
-    }
+    updateEmotionState(tr, e);
     tr.last_update_ms = ts_ms;
   }
 }

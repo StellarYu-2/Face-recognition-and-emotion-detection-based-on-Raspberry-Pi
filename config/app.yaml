@@ -10,10 +10,18 @@ enroll_target_images: 4
 # Pipeline schedule
 detect_interval: 2
 recognition_interval: 4
-emotion_interval: 40
+emotion_interval: 20
 max_inference_faces: 1
 recognition_crop_scale: 1.06
+recognition_min_face_size: 96
+recognition_blur_threshold: 35.0
+recognition_margin_threshold: 0.05
+emotion_crop_scale: 1.14
+emotion_min_face_size: 96
+emotion_non_calm_floor: 0.22
+emotion_handoff_margin: 0.08
 debug_recognition: true
+debug_emotion: true
 
 # Enrollment quality gate
 min_face_area_ratio: 0.08

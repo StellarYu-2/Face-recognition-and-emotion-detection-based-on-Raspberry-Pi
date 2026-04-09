@@ -114,8 +114,24 @@ bool App::loadConfig() {
         config_.max_inference_faces = std::stoi(value);
       } else if (key == "recognition_crop_scale") {
         config_.recognition_crop_scale = std::stof(value);
+      } else if (key == "recognition_min_face_size") {
+        config_.recognition_min_face_size = std::stoi(value);
+      } else if (key == "recognition_blur_threshold") {
+        config_.recognition_blur_threshold = std::stof(value);
+      } else if (key == "recognition_margin_threshold") {
+        config_.recognition_margin_threshold = std::stof(value);
+      } else if (key == "emotion_crop_scale") {
+        config_.emotion_crop_scale = std::stof(value);
+      } else if (key == "emotion_min_face_size") {
+        config_.emotion_min_face_size = std::stoi(value);
+      } else if (key == "emotion_non_calm_floor") {
+        config_.emotion_non_calm_floor = std::stof(value);
+      } else if (key == "emotion_handoff_margin") {
+        config_.emotion_handoff_margin = std::stof(value);
       } else if (key == "debug_recognition") {
         config_.debug_recognition = parseBoolValue(value);
+      } else if (key == "debug_emotion") {
+        config_.debug_emotion = parseBoolValue(value);
       } else if (key == "min_face_area_ratio") {
         config_.min_face_area_ratio = std::stof(value);
       } else if (key == "blur_threshold") {
@@ -248,6 +264,8 @@ bool App::initComponents() {
     return false;
   }
 
+  emotion_recognizer_.setDecisionPolicy(config_.emotion_non_calm_floor, config_.emotion_handoff_margin);
+
   pipeline_ = std::make_unique<InferencePipeline>(*detector_,
                                                   recognizer_,
                                                   emotion_recognizer_,
@@ -258,7 +276,13 @@ bool App::initComponents() {
                                                   config_.emotion_interval,
                                                   config_.max_inference_faces,
                                                   config_.recognition_crop_scale,
+                                                  config_.recognition_min_face_size,
+                                                  config_.recognition_blur_threshold,
+                                                  config_.recognition_margin_threshold,
+                                                  config_.emotion_crop_scale,
+                                                  config_.emotion_min_face_size,
                                                   config_.debug_recognition,
+                                                  config_.debug_emotion,
                                                   config_.match_threshold,
                                                   config_.sigmoid_tau);
   return true;

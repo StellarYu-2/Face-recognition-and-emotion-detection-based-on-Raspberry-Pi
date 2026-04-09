@@ -23,13 +23,17 @@ bool EmbeddingStore::reload() {
 
 const std::vector<StoredEmbedding>& EmbeddingStore::gallery() const { return gallery_; }
 
-IdentityResult EmbeddingStore::match(const std::vector<float>& query_embedding, float threshold, float tau) const {
+IdentityResult EmbeddingStore::match(const std::vector<float>& query_embedding,
+                                     float threshold,
+                                     float tau,
+                                     float margin_threshold) const {
   IdentityResult result{};
   if (query_embedding.empty() || templates_.empty()) {
     result.name = "Unknown";
     result.known = false;
     result.distance = 1.0F;
     result.conf_pct = 0.0F;
+    result.measured = false;
     result.debug_summary = active_model_tag_.empty() ? "no_templates" : ("no_templates_for_model=" + active_model_tag_);
     return result;
   }
@@ -55,6 +59,7 @@ IdentityResult EmbeddingStore::match(const std::vector<float>& query_embedding, 
     result.known = false;
     result.distance = 1.0F;
     result.conf_pct = 0.0F;
+    result.measured = false;
     result.debug_summary = "ranked_empty";
     return result;
   }
@@ -62,19 +67,27 @@ IdentityResult EmbeddingStore::match(const std::vector<float>& query_embedding, 
   const float best_distance = ranked.front().distance;
   const std::string& best_name = ranked.front().person_name;
   const float known_conf = ConfidenceMapper::distanceToPercent(best_distance, threshold, tau);
-  const bool is_known = best_distance <= threshold;
+  const float next_distance = (ranked.size() > 1) ? ranked[1].distance : std::numeric_limits<float>::max();
+  const float margin = (ranked.size() > 1) ? (next_distance - best_distance) : std::numeric_limits<float>::max();
+  const bool pass_threshold = best_distance <= threshold;
+  const bool pass_margin = (ranked.size() <= 1) || (margin >= margin_threshold);
+  const bool is_known = pass_threshold && pass_margin;
+  const bool is_ambiguous = pass_threshold && !pass_margin;
   result.name = is_known ? best_name : "Unknown";
   result.known = is_known;
   result.distance = best_distance;
-  result.conf_pct = is_known ? known_conf : (100.0F - known_conf);
+  result.measured = !is_ambiguous;
+  result.conf_pct = is_known ? known_conf : (is_ambiguous ? 0.0F : (100.0F - known_conf));
   result.matched_sample_count = ranked.front().sample_count;
 
   std::ostringstream oss;
   oss << "model=" << (active_model_tag_.empty() ? "any" : active_model_tag_) << " best=" << ranked.front().person_name << ":"
       << ranked.front().distance << " samples=" << ranked.front().sample_count;
   if (ranked.size() > 1) {
-    oss << " next=" << ranked[1].person_name << ":" << ranked[1].distance;
+    oss << " next=" << ranked[1].person_name << ":" << ranked[1].distance << " margin=" << margin;
   }
+  oss << " pass_threshold=" << (pass_threshold ? 1 : 0) << " pass_margin=" << (pass_margin ? 1 : 0)
+      << " ambiguous=" << (is_ambiguous ? 1 : 0);
   result.debug_summary = oss.str();
   return result;
 }

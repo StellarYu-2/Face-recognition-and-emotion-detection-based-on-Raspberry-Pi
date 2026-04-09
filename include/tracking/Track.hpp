@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <string>
 
 #include "core/Types.hpp"
@@ -12,8 +13,12 @@ struct Track {
   IdentityResult identity{};
   IdentityResult pending_identity{};
   EmotionResult emotion{};
+  EmotionResult pending_emotion{};
+  std::array<float, 4> smoothed_emotion_probs{{0.0F, 0.0F, 0.0F, 0.0F}};
+  bool emotion_initialized{false};
   int ttl{0};
   int pending_identity_hits{0};
+  int pending_emotion_hits{0};
   int unknown_identity_streak{0};
   std::uint64_t last_frame_id{0};
   std::uint64_t last_update_ms{0};

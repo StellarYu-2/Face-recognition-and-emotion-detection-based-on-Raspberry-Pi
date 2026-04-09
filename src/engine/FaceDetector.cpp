@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <filesystem>
+#include <limits>
 
 #include <opencv2/imgproc.hpp>
 
@@ -28,6 +29,43 @@ int matRows(const ncnn::Mat& mat) {
 const float kCenterVariance = 0.1F;
 const float kSizeVariance = 0.2F;
 #endif
+
+float centerDistanceRatio(const cv::Rect& a, const cv::Rect& b) {
+  const float ax = static_cast<float>(a.x) + static_cast<float>(a.width) * 0.5F;
+  const float ay = static_cast<float>(a.y) + static_cast<float>(a.height) * 0.5F;
+  const float bx = static_cast<float>(b.x) + static_cast<float>(b.width) * 0.5F;
+  const float by = static_cast<float>(b.y) + static_cast<float>(b.height) * 0.5F;
+  const float dx = ax - bx;
+  const float dy = ay - by;
+  const float scale = static_cast<float>(std::max({a.width, a.height, b.width, b.height}));
+  if (scale <= 1e-6F) {
+    return std::numeric_limits<float>::max();
+  }
+  return std::sqrt(dx * dx + dy * dy) / scale;
+}
+
+float containmentRatio(const cv::Rect& a, const cv::Rect& b) {
+  const int x_left = std::max(a.x, b.x);
+  const int y_top = std::max(a.y, b.y);
+  const int x_right = std::min(a.x + a.width, b.x + b.width);
+  const int y_bottom = std::min(a.y + a.height, b.y + b.height);
+  if (x_right <= x_left || y_bottom <= y_top) {
+    return 0.0F;
+  }
+  const float inter = static_cast<float>((x_right - x_left) * (y_bottom - y_top));
+  const float min_area = static_cast<float>(std::min(a.area(), b.area()));
+  if (min_area <= 1e-6F) {
+    return 0.0F;
+  }
+  return inter / min_area;
+}
+
+bool shouldMergeDuplicate(const cv::Rect& a, const cv::Rect& b, float iou_value, float iou_threshold) {
+  if (iou_value > iou_threshold) {
+    return true;
+  }
+  return containmentRatio(a, b) > 0.82F && centerDistanceRatio(a, b) < 0.18F;
+}
 
 }  // namespace
 
@@ -244,7 +282,8 @@ std::vector<Detection> FaceDetector::nms(const std::vector<Detection>& detection
   for (const auto& det : sorted) {
     bool overlapped = false;
     for (const auto& existing : kept) {
-      if (iou(det.box, existing.box) > nms_threshold) {
+      const float overlap = iou(det.box, existing.box);
+      if (shouldMergeDuplicate(det.box, existing.box, overlap, nms_threshold)) {
         overlapped = true;
         break;
       }
@@ -337,7 +376,8 @@ std::vector<Detection> FaceDetector::suppressDuplicates(const std::vector<Detect
   for (const auto& det : sorted) {
     bool overlapped = false;
     for (const auto& existing : kept) {
-      if (iou(det.box, existing.box) > 0.35F) {
+      const float overlap = iou(det.box, existing.box);
+      if (shouldMergeDuplicate(det.box, existing.box, overlap, 0.35F)) {
         overlapped = true;
         break;
       }

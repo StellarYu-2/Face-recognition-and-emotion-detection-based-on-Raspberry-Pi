@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -32,6 +33,7 @@ struct IdentityResult {
   float distance{1.0F};
   float conf_pct{0.0F};
   bool known{false};
+  bool measured{false};
   int matched_sample_count{0};
   std::string debug_summary{};
 };
@@ -51,21 +53,21 @@ enum class EmotionLabel {
 inline std::string emotionToString(EmotionLabel label) {
   switch (label) {
     case EmotionLabel::Neutral:
-      return "Neutral";
+      return "Calm";
     case EmotionLabel::Happy:
       return "Happy";
-    case EmotionLabel::Surprise:
-      return "Surprise";
     case EmotionLabel::Sad:
       return "Sad";
     case EmotionLabel::Angry:
       return "Angry";
+    case EmotionLabel::Surprise:
+      return "Happy";
     case EmotionLabel::Fear:
-      return "Fear";
+      return "Sad";
     case EmotionLabel::Disgust:
-      return "Disgust";
+      return "Angry";
     case EmotionLabel::Contempt:
-      return "Contempt";
+      return "Angry";
     default:
       return "Unknown";
   }
@@ -74,6 +76,8 @@ inline std::string emotionToString(EmotionLabel label) {
 struct EmotionResult {
   EmotionLabel label{EmotionLabel::Unknown};
   float conf_pct{0.0F};
+  std::array<float, 4> grouped_probs{{0.0F, 0.0F, 0.0F, 0.0F}};
+  std::string debug_summary{};
 };
 
 struct TrackState {

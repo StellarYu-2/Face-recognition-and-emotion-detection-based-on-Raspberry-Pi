@@ -21,6 +21,7 @@ class EmotionRecognizer {
             int input_size = 64,
             std::string input_blob_name = "input",
             std::string output_blob_name = "output");
+  void setDecisionPolicy(float non_calm_floor, float handoff_margin);
   EmotionResult infer(const cv::Mat& face_bgr) const;
 
  private:
@@ -32,6 +33,8 @@ class EmotionRecognizer {
   bool smile_ready_{false};
   bool ncnn_ready_{false};
   int input_size_{64};
+  float non_calm_floor_{0.22F};
+  float handoff_margin_{0.08F};
   std::string model_param_path_{};
   std::string model_bin_path_{};
   std::string input_blob_name_{"input"};

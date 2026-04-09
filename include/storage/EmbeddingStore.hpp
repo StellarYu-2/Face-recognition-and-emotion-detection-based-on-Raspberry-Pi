@@ -16,7 +16,7 @@ class EmbeddingStore {
   bool reload();
   const std::vector<StoredEmbedding>& gallery() const;
 
-  IdentityResult match(const std::vector<float>& query_embedding, float threshold, float tau) const;
+  IdentityResult match(const std::vector<float>& query_embedding, float threshold, float tau, float margin_threshold) const;
 
  private:
   struct PersonTemplate {

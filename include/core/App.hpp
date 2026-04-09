@@ -29,7 +29,15 @@ struct AppConfig {
   int emotion_interval{15};
   int max_inference_faces{1};
   float recognition_crop_scale{1.15F};
+  int recognition_min_face_size{96};
+  float recognition_blur_threshold{35.0F};
+  float recognition_margin_threshold{0.05F};
+  float emotion_crop_scale{1.14F};
+  int emotion_min_face_size{96};
+  float emotion_non_calm_floor{0.22F};
+  float emotion_handoff_margin{0.08F};
   bool debug_recognition{true};
+  bool debug_emotion{false};
   float min_face_area_ratio{0.08F};
   float blur_threshold{100.0F};
   int quality_stable_frames{3};
@@ -54,7 +62,7 @@ struct AppConfig {
   std::string recognizer_param_path{"./models/onnx_to_ncnn/mobilefacenet.param"};
   std::string recognizer_bin_path{"./models/onnx_to_ncnn/mobilefacenet.bin"};
   int recognizer_input_size{112};
-  std::string recognizer_color_order{"rgb"};
+  std::string recognizer_color_order{"bgr"};
   std::string recognizer_input_blob{"data"};
   std::string recognizer_output_blob{"fc1"};
 

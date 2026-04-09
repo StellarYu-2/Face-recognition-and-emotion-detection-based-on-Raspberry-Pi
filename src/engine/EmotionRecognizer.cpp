@@ -16,6 +16,27 @@ float clampPct(float v) {
   return std::clamp(v, 0.0F, 99.0F);
 }
 
+std::array<float, 4> normalizeGroupedScores(float calm, float happy, float sad, float angry) {
+  std::array<float, 4> scores{{
+      std::max(0.0F, calm),
+      std::max(0.0F, happy),
+      std::max(0.0F, sad),
+      std::max(0.0F, angry),
+  }};
+  const float sum = scores[0] + scores[1] + scores[2] + scores[3];
+  if (sum <= 1e-6F) {
+    return {{0.0F, 0.0F, 0.0F, 0.0F}};
+  }
+  for (float& score : scores) {
+    score /= sum;
+  }
+  return scores;
+}
+
+void assignGroupedScores(EmotionResult& out, float calm, float happy, float sad, float angry) {
+  out.grouped_probs = normalizeGroupedScores(calm, happy, sad, angry);
+}
+
 float edgeDensity(const cv::Mat& gray) {
   cv::Mat edges{};
   cv::Canny(gray, edges, 60.0, 140.0);
@@ -26,6 +47,14 @@ float darkPixelRatio(const cv::Mat& gray, std::uint8_t threshold) {
   cv::Mat mask{};
   cv::threshold(gray, mask, static_cast<double>(threshold), 255.0, cv::THRESH_BINARY_INV);
   return static_cast<float>(cv::countNonZero(mask)) / static_cast<float>(mask.total());
+}
+
+float laplacianVariance(const cv::Mat& gray) {
+  cv::Mat lap{};
+  cv::Laplacian(gray, lap, CV_32F, 3);
+  cv::Scalar mean{}, stddev{};
+  cv::meanStdDev(lap, mean, stddev);
+  return static_cast<float>(stddev[0] * stddev[0]);
 }
 
 #ifdef USE_NCNN
@@ -42,29 +71,6 @@ int matElementCount(const ncnn::Mat& mat) {
   return 0;
 }
 #endif
-
-EmotionLabel indexToEmotion(int idx) {
-  switch (idx) {
-    case 0:
-      return EmotionLabel::Neutral;
-    case 1:
-      return EmotionLabel::Happy;
-    case 2:
-      return EmotionLabel::Surprise;
-    case 3:
-      return EmotionLabel::Sad;
-    case 4:
-      return EmotionLabel::Angry;
-    case 5:
-      return EmotionLabel::Disgust;
-    case 6:
-      return EmotionLabel::Fear;
-    case 7:
-      return EmotionLabel::Contempt;
-    default:
-      return EmotionLabel::Unknown;
-  }
-}
 
 }  // namespace
 
@@ -107,11 +113,34 @@ bool EmotionRecognizer::init(const std::string& model_param_path,
   return true;
 }
 
+void EmotionRecognizer::setDecisionPolicy(float non_calm_floor, float handoff_margin) {
+  non_calm_floor_ = std::clamp(non_calm_floor, 0.05F, 0.90F);
+  handoff_margin_ = std::clamp(handoff_margin, 0.01F, 0.40F);
+}
+
 EmotionResult EmotionRecognizer::infer(const cv::Mat& face_bgr) const {
   EmotionResult out{};
   if (!initialized_ || face_bgr.empty()) {
     out.label = EmotionLabel::Unknown;
     out.conf_pct = 0.0F;
+    return out;
+  }
+
+  if (face_bgr.cols < 72 || face_bgr.rows < 72) {
+    out.label = EmotionLabel::Unknown;
+    out.conf_pct = 0.0F;
+    out.grouped_probs = {{0.0F, 0.0F, 0.0F, 0.0F}};
+    out.debug_summary = "skipped_small_face";
+    return out;
+  }
+
+  cv::Mat precheck_gray{};
+  cv::cvtColor(face_bgr, precheck_gray, cv::COLOR_BGR2GRAY);
+  if (laplacianVariance(precheck_gray) < 28.0F) {
+    out.label = EmotionLabel::Unknown;
+    out.conf_pct = 0.0F;
+    out.grouped_probs = {{0.0F, 0.0F, 0.0F, 0.0F}};
+    out.debug_summary = "skipped_blur";
     return out;
   }
 
@@ -148,29 +177,39 @@ EmotionResult EmotionRecognizer::infer(const cv::Mat& face_bgr) const {
   if (has_smile) {
     out.label = EmotionLabel::Happy;
     out.conf_pct = clampPct(72.0F + 20.0F * smile_strength);
+    assignGroupedScores(out, 0.08F, 0.84F + 0.12F * smile_strength, 0.04F, 0.04F);
+    out.debug_summary = "heuristic=smile";
     return out;
   }
 
   if (mouth_dark > 0.16F && lower_edges > upper_edges * 1.18F && global_contrast > 42.0F) {
-    out.label = EmotionLabel::Surprise;
+    out.label = EmotionLabel::Happy;
     out.conf_pct = clampPct(60.0F + mouth_dark * 120.0F);
+    assignGroupedScores(out, 0.18F, 0.68F, 0.08F, 0.06F);
+    out.debug_summary = "heuristic=mouth_open";
     return out;
   }
 
   if (global_mean < 100.0F && global_contrast < 36.0F && lower_edges < 0.11F) {
     out.label = EmotionLabel::Sad;
     out.conf_pct = clampPct(55.0F + (100.0F - global_mean) * 0.25F);
+    assignGroupedScores(out, 0.20F, 0.05F, 0.68F, 0.07F);
+    out.debug_summary = "heuristic=low_energy";
     return out;
   }
 
   if (global_contrast > 55.0F && upper_edges > 0.14F && mouth_dark < 0.10F) {
     out.label = EmotionLabel::Angry;
     out.conf_pct = clampPct(58.0F + upper_edges * 150.0F);
+    assignGroupedScores(out, 0.14F, 0.04F, 0.07F, 0.75F);
+    out.debug_summary = "heuristic=high_tension";
     return out;
   }
 
   out.label = EmotionLabel::Neutral;
   out.conf_pct = clampPct(58.0F + std::max(0.0F, 30.0F - std::abs(global_mean - 118.0F) * 0.35F));
+  assignGroupedScores(out, 0.78F, 0.08F, 0.08F, 0.06F);
+  out.debug_summary = "heuristic=calm";
   return out;
 }
 
@@ -197,6 +236,8 @@ EmotionResult EmotionRecognizer::inferWithNcnn(const cv::Mat& face_bgr) const {
   if (rc != 0) {
     out.label = EmotionLabel::Unknown;
     out.conf_pct = 0.0F;
+    out.grouped_probs = {{0.0F, 0.0F, 0.0F, 0.0F}};
+    out.debug_summary = "extract_failed";
     return out;
   }
 
@@ -204,11 +245,12 @@ EmotionResult EmotionRecognizer::inferWithNcnn(const cv::Mat& face_bgr) const {
   if (total <= 0) {
     out.label = EmotionLabel::Unknown;
     out.conf_pct = 0.0F;
+    out.grouped_probs = {{0.0F, 0.0F, 0.0F, 0.0F}};
+    out.debug_summary = "empty_logits";
     return out;
   }
 
   const float* ptr = static_cast<const float*>(prob.data);
-  int best_idx = 0;
   float best_score = ptr[0];
   float sum_exp = 0.0F;
   std::vector<float> logits(total, 0.0F);
@@ -216,21 +258,60 @@ EmotionResult EmotionRecognizer::inferWithNcnn(const cv::Mat& face_bgr) const {
     logits[static_cast<std::size_t>(i)] = ptr[i];
     if (ptr[i] > best_score) {
       best_score = ptr[i];
-      best_idx = i;
     }
   }
 
   for (const float x : logits) {
     sum_exp += std::exp(x - best_score);
   }
-  const float prob_pct = (sum_exp > 1e-6F) ? (100.0F / sum_exp) : 0.0F;
-  out.label = indexToEmotion(best_idx);
-  out.conf_pct = clampPct(prob_pct);
+
+  std::vector<float> probs(static_cast<std::size_t>(total), 0.0F);
+  if (sum_exp > 1e-6F) {
+    for (int i = 0; i < total; ++i) {
+      probs[static_cast<std::size_t>(i)] = std::exp(logits[static_cast<std::size_t>(i)] - best_score) / sum_exp;
+    }
+  }
+
+  const float calm_prob = (probs.size() > 0) ? probs[0] : 0.0F;
+  const float happy_prob = ((probs.size() > 1) ? probs[1] : 0.0F) + ((probs.size() > 2) ? probs[2] : 0.0F);
+  const float sad_prob = ((probs.size() > 3) ? probs[3] : 0.0F) + ((probs.size() > 6) ? probs[6] : 0.0F);
+  const float angry_prob =
+      ((probs.size() > 4) ? probs[4] : 0.0F) + ((probs.size() > 5) ? probs[5] : 0.0F) + ((probs.size() > 7) ? probs[7] : 0.0F);
+
+  const std::array<std::pair<EmotionLabel, float>, 3> non_calm = {{
+      {EmotionLabel::Happy, happy_prob},
+      {EmotionLabel::Sad, sad_prob},
+      {EmotionLabel::Angry, angry_prob},
+  }};
+
+  EmotionLabel best_label = EmotionLabel::Neutral;
+  float best_prob = calm_prob;
+  EmotionLabel best_non_calm_label = EmotionLabel::Happy;
+  float best_non_calm_prob = non_calm[0].second;
+  for (const auto& [label, prob_value] : non_calm) {
+    if (prob_value > best_non_calm_prob) {
+      best_non_calm_prob = prob_value;
+      best_non_calm_label = label;
+    }
+  }
+
+  if (best_non_calm_prob >= non_calm_floor_ && best_non_calm_prob + handoff_margin_ >= calm_prob) {
+    best_label = best_non_calm_label;
+    best_prob = best_non_calm_prob;
+  }
+
+  out.label = best_label;
+  out.conf_pct = clampPct(best_prob * 100.0F);
+  assignGroupedScores(out, calm_prob, happy_prob, sad_prob, angry_prob);
+  out.debug_summary = "p_calm=" + std::to_string(calm_prob) + " p_happy=" + std::to_string(happy_prob) +
+                      " p_sad=" + std::to_string(sad_prob) + " p_angry=" + std::to_string(angry_prob) +
+                      " floor=" + std::to_string(non_calm_floor_) + " handoff=" + std::to_string(handoff_margin_);
   return out;
 #else
   (void)face_bgr;
   out.label = EmotionLabel::Unknown;
   out.conf_pct = 0.0F;
+  out.grouped_probs = {{0.0F, 0.0F, 0.0F, 0.0F}};
   return out;
 #endif
 }
