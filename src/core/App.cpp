@@ -168,6 +168,8 @@ bool App::loadConfig() {
         config_.detector_score_threshold = std::stof(value);
       } else if (key == "detector_nms_threshold") {
         config_.detector_nms_threshold = std::stof(value);
+      } else if (key == "detector_enable_cascade_fallback") {
+        config_.detector_enable_cascade_fallback = parseBoolValue(value);
       } else if (key == "detector_input_blob") {
         config_.detector_input_blob = value;
       } else if (key == "detector_score_blob") {
@@ -215,6 +217,7 @@ bool App::initComponents() {
                                              config_.detector_input_height,
                                              config_.detector_score_threshold,
                                              config_.detector_nms_threshold,
+                                             config_.detector_enable_cascade_fallback,
                                              config_.detector_input_blob,
                                              config_.detector_score_blob,
                                              config_.detector_bbox_blob);

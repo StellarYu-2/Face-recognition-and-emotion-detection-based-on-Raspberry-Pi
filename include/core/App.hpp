@@ -57,6 +57,7 @@ struct AppConfig {
   int detector_input_height{240};
   float detector_score_threshold{0.7F};
   float detector_nms_threshold{0.3F};
+  bool detector_enable_cascade_fallback{false};
   std::string detector_input_blob{"input"};
   std::string detector_score_blob{"scores"};
   std::string detector_bbox_blob{"boxes"};

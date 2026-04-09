@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
 #include <limits>
 #include <sstream>
 #include <unordered_map>
@@ -34,7 +35,8 @@ IdentityResult EmbeddingStore::match(const std::vector<float>& query_embedding,
     result.distance = 1.0F;
     result.conf_pct = 0.0F;
     result.measured = false;
-    result.debug_summary = active_model_tag_.empty() ? "no_templates" : ("no_templates_for_model=" + active_model_tag_);
+    result.debug_summary =
+        "decision=no_templates shown=Unknown model=" + (active_model_tag_.empty() ? std::string("any") : active_model_tag_);
     return result;
   }
 
@@ -60,7 +62,7 @@ IdentityResult EmbeddingStore::match(const std::vector<float>& query_embedding,
     result.distance = 1.0F;
     result.conf_pct = 0.0F;
     result.measured = false;
-    result.debug_summary = "ranked_empty";
+    result.debug_summary = "decision=empty_gallery shown=Unknown";
     return result;
   }
 
@@ -73,6 +75,8 @@ IdentityResult EmbeddingStore::match(const std::vector<float>& query_embedding,
   const bool pass_margin = (ranked.size() <= 1) || (margin >= margin_threshold);
   const bool is_known = pass_threshold && pass_margin;
   const bool is_ambiguous = pass_threshold && !pass_margin;
+  const std::string decision = is_known ? "accept" : (is_ambiguous ? "ambiguous" : "reject");
+  const std::string reason = is_known ? "passed" : (is_ambiguous ? "gap_too_small" : "distance_too_high");
   result.name = is_known ? best_name : "Unknown";
   result.known = is_known;
   result.distance = best_distance;
@@ -82,13 +86,17 @@ IdentityResult EmbeddingStore::match(const std::vector<float>& query_embedding,
   result.matched_sample_count = ranked.front().sample_count;
 
   std::ostringstream oss;
-  oss << "model=" << (active_model_tag_.empty() ? "any" : active_model_tag_) << " best=" << ranked.front().person_name << ":"
-      << ranked.front().distance << " samples=" << ranked.front().sample_count;
+  oss << std::fixed;
+  oss << "decision=" << decision << " shown=" << result.name << " model="
+      << (active_model_tag_.empty() ? "any" : active_model_tag_) << " top1=" << ranked.front().person_name
+      << " sim=" << std::setprecision(1) << known_conf << " dist=" << std::setprecision(3) << ranked.front().distance;
   if (ranked.size() > 1) {
-    oss << " next=" << ranked[1].person_name << ":" << ranked[1].distance << " margin=" << margin;
+    oss << " top2=" << ranked[1].person_name << " dist2=" << ranked[1].distance << " gap=" << margin;
+  } else {
+    oss << " top2=- dist2=- gap=-";
   }
-  oss << " pass_threshold=" << (pass_threshold ? 1 : 0) << " pass_margin=" << (pass_margin ? 1 : 0)
-      << " ambiguous=" << (is_ambiguous ? 1 : 0);
+  oss << " samples=" << ranked.front().sample_count << " reason=" << reason << " dist_ok=" << (pass_threshold ? 1 : 0)
+      << " gap_ok=" << (pass_margin ? 1 : 0);
   result.debug_summary = oss.str();
   return result;
 }

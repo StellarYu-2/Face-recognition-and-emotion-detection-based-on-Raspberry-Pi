@@ -76,6 +76,7 @@ FaceDetector::FaceDetector(std::string cascade_path,
                            int input_height,
                            float score_threshold,
                            float nms_threshold,
+                           bool enable_cascade_fallback,
                            std::string input_blob_name,
                            std::string score_blob_name,
                            std::string bbox_blob_name)
@@ -86,6 +87,7 @@ FaceDetector::FaceDetector(std::string cascade_path,
       input_height_(input_height > 0 ? input_height : 240),
       score_threshold_(score_threshold),
       nms_threshold_(nms_threshold),
+      enable_cascade_fallback_(enable_cascade_fallback),
       input_blob_name_(std::move(input_blob_name)),
       score_blob_name_(std::move(score_blob_name)),
       bbox_blob_name_(std::move(bbox_blob_name)) {}
@@ -140,7 +142,7 @@ std::vector<Detection> FaceDetector::detect(const cv::Mat& frame_bgr) const {
 #ifdef USE_NCNN
   if (ncnn_ready_) {
     const auto dets = detectWithNcnn(frame_bgr);
-    if (!dets.empty()) {
+    if (!dets.empty() || !enable_cascade_fallback_) {
       return dets;
     }
   }

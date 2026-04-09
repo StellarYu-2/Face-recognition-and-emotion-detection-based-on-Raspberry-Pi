@@ -15,13 +15,13 @@ max_inference_faces: 1
 recognition_crop_scale: 1.06
 recognition_min_face_size: 96
 recognition_blur_threshold: 35.0
-recognition_margin_threshold: 0.07
+recognition_margin_threshold: 0.11
 emotion_crop_scale: 1.14
 emotion_min_face_size: 96
 emotion_non_calm_floor: 0.22
 emotion_handoff_margin: 0.08
 debug_recognition: true
-debug_emotion: true
+debug_emotion: false
 
 # Enrollment quality gate
 min_face_area_ratio: 0.08
@@ -29,7 +29,7 @@ blur_threshold: 100.0
 quality_stable_frames: 3
 
 # Recognition threshold and confidence mapping
-match_threshold: 1.17
+match_threshold: 1.10
 sigmoid_tau: 0.10
 
 # Tracking
@@ -48,8 +48,9 @@ detector_param_path: "./models/onnx_to_ncnn/face_detector.param"
 detector_bin_path: "./models/onnx_to_ncnn/face_detector.bin"
 detector_input_width: 320
 detector_input_height: 240
-detector_score_threshold: 0.55
+detector_score_threshold: 0.60
 detector_nms_threshold: 0.18
+detector_enable_cascade_fallback: false
 detector_input_blob: "in0"
 detector_score_blob: "out0"
 detector_bbox_blob: "out1"

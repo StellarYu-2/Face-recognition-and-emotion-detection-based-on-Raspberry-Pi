@@ -23,6 +23,7 @@ class FaceDetector {
                int input_height = 240,
                float score_threshold = 0.7F,
                float nms_threshold = 0.3F,
+               bool enable_cascade_fallback = false,
                std::string input_blob_name = "input",
                std::string score_blob_name = "scores",
                std::string bbox_blob_name = "boxes");
@@ -59,6 +60,7 @@ class FaceDetector {
   int input_height_{240};
   float score_threshold_{0.7F};
   float nms_threshold_{0.3F};
+  bool enable_cascade_fallback_{false};
   std::string input_blob_name_{"input"};
   std::string score_blob_name_{"scores"};
   std::string bbox_blob_name_{"boxes"};

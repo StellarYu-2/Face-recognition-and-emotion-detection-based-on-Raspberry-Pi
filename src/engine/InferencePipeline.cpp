@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 
 #include <opencv2/imgproc.hpp>
 
@@ -188,17 +190,27 @@ RecognitionResult InferencePipeline::process(const FramePacket& frame) {
                                       sigmoid_tau_,
                                       dynamic_margin_threshold);
           if (!id.debug_summary.empty()) {
-            id.debug_summary += " match_thr=" + std::to_string(dynamic_match_threshold) +
-                                " margin_thr=" + std::to_string(dynamic_margin_threshold) +
-                                " det_score=" + std::to_string(det.det_score);
+            std::ostringstream extra;
+            extra << std::fixed << std::setprecision(3);
+            extra << id.debug_summary << " thr=" << dynamic_match_threshold << " gap_thr=" << dynamic_margin_threshold
+                  << " det=" << det.det_score;
+            id.debug_summary = extra.str();
           }
         } else {
-          id.debug_summary = "skipped_quality area=" + std::to_string(det.box.area()) + " blur=" + std::to_string(blur_score);
+          const bool size_ok =
+              recognition_rect.width >= recognition_min_face_size_ && recognition_rect.height >= recognition_min_face_size_;
+          const bool blur_ok = blur_score >= recognition_blur_threshold_;
+          const bool det_ok = det.det_score >= 0.50F;
+          std::ostringstream skip;
+          skip << std::fixed << std::setprecision(3);
+          skip << "decision=skip_quality shown=Unknown area=" << det.box.area() << " blur=" << blur_score
+               << " size_ok=" << (size_ok ? 1 : 0) << " blur_ok=" << (blur_ok ? 1 : 0) << " det_ok=" << (det_ok ? 1 : 0)
+               << " det=" << det.det_score;
+          id.debug_summary = skip.str();
         }
         if (debug_recognition_) {
-          std::cout << "[Recog] frame=" << frame.frame_id << " det=" << idx << " area=" << det.box.area()
-                    << " name=" << id.name << " dist=" << id.distance << " conf=" << id.conf_pct
-                    << " " << id.debug_summary << '\n';
+          std::cout << "[Recog] frame=" << frame.frame_id << " det=" << idx << " area=" << det.box.area() << " "
+                    << id.debug_summary << '\n';
         }
         identities.push_back(std::move(id));
       } else {
