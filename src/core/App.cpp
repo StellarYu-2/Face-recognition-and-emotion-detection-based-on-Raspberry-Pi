@@ -18,6 +18,51 @@ bool parseBoolValue(std::string value) {
   return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
+#if 0
+int enrollmentStageIndex(int captured, int target_images) {
+  if (target_images <= 0) {
+    return 0;
+  }
+  const int progress = captured * 4;
+  return std::min(3, progress / target_images);
+}
+
+std::string enrollmentPoseHint(int captured, int target_images) {
+  switch (enrollmentStageIndex(captured, target_images)) {
+    case 0:
+      return "正对镜头";
+    case 1:
+      return "轻微向左转头";
+    case 2:
+      return "轻微向右转头";
+    default:
+      return "轻微抬头或低头";
+  }
+}
+
+#endif
+
+int enrollmentStageIndex(int captured, int target_images) {
+  if (target_images <= 0) {
+    return 0;
+  }
+  const int progress = captured * 4;
+  return std::min(3, progress / target_images);
+}
+
+std::string enrollmentPoseHint(int captured, int target_images) {
+  switch (enrollmentStageIndex(captured, target_images)) {
+    case 0:
+      return "Look forward";
+    case 1:
+      return "Turn slightly left";
+    case 2:
+      return "Turn slightly right";
+    default:
+      return "Raise or lower chin";
+  }
+}
+
 }  // namespace
 
 App::App(std::string config_path) : config_path_(std::move(config_path)), sm_(AppState::MainMenu) {}
@@ -365,6 +410,7 @@ void App::handleEnrollment() {
   FaceQualityGate gate(config_.min_face_area_ratio, config_.blur_threshold, config_.quality_stable_frames);
   const int target_images = std::max(1, config_.enroll_target_images);
   int captured = 0;
+  int last_stage = -1;
   std::cout << "[Enrollment] 按 s 抓拍，按 q 退出。需要有效样本 " << target_images << " 张。" << std::endl;
 
   while (captured < target_images) {
@@ -387,13 +433,21 @@ void App::handleEnrollment() {
     bool ready = false;
     std::string status = "No face";
     QualityResult qres{};
+    const std::string pose_hint = enrollmentPoseHint(captured, target_images);
+    const int stage = enrollmentStageIndex(captured, target_images);
+    if (stage != last_stage) {
+      std::cout << "[Enrollment] 当前引导: " << pose_hint << std::endl;
+      last_stage = stage;
+    }
     if (best_face.area() > 0) {
       qres = gate.evaluate(frame.bgr, best_face);
       ready = qres.valid;
       std::ostringstream oss;
-      oss << "Captured " << captured << "/" << target_images << " | " << qres.reason << " | area=" << qres.area_ratio
-          << " blur=" << qres.blur_score;
+      oss << pose_hint << " | " << captured << "/" << target_images << " | " << qres.reason << " | area="
+          << qres.area_ratio << " blur=" << qres.blur_score;
       status = oss.str();
+    } else {
+      status = pose_hint + " | No face";
     }
 
     renderer_->drawEnrollment(frame.bgr, best_face, status, ready);

@@ -5,7 +5,7 @@ camera_source: "0"
 frame_width: 640
 frame_height: 480
 frame_fps: 30
-enroll_target_images: 4
+enroll_target_images: 8
 
 # Pipeline schedule
 detect_interval: 2
@@ -20,7 +20,7 @@ emotion_crop_scale: 1.14
 emotion_min_face_size: 96
 emotion_non_calm_floor: 0.22
 emotion_handoff_margin: 0.08
-debug_recognition: true
+debug_recognition: false
 debug_emotion: false
 
 # Enrollment quality gate

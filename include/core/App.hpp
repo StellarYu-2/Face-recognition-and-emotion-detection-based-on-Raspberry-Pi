@@ -25,7 +25,7 @@ struct AppConfig {
   int frame_width{480};
   int frame_height{360};
   int frame_fps{30};
-  int enroll_target_images{4};
+  int enroll_target_images{8};
   int detect_interval{5};
   int recognition_interval{20};
   int emotion_interval{15};

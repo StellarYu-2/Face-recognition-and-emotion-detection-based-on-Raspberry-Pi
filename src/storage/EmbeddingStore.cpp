@@ -29,7 +29,7 @@ IdentityResult EmbeddingStore::match(const std::vector<float>& query_embedding,
                                      float tau,
                                      float margin_threshold) const {
   IdentityResult result{};
-  if (query_embedding.empty() || templates_.empty()) {
+  if (query_embedding.empty() || gallery_.empty()) {
     result.name = "Unknown";
     result.known = false;
     result.distance = 1.0F;
@@ -45,12 +45,30 @@ IdentityResult EmbeddingStore::match(const std::vector<float>& query_embedding,
     float distance{std::numeric_limits<float>::max()};
     int sample_count{0};
   };
-  std::vector<RankedDistance> ranked;
-  ranked.reserve(templates_.size());
+  std::unordered_map<std::string, RankedDistance> best_by_person;
+  for (const auto& item : gallery_) {
+    if (!active_model_tag_.empty() && item.model_tag != active_model_tag_) {
+      continue;
+    }
+    if (item.embedding.empty()) {
+      continue;
+    }
 
-  for (const auto& item : templates_) {
-    const float d = FaceRecognizer::l2Distance(query_embedding, item.mean_embedding);
-    ranked.push_back(RankedDistance{item.person_name, d, item.sample_count});
+    const float d = FaceRecognizer::l2Distance(query_embedding, item.embedding);
+    auto [it, inserted] =
+        best_by_person.emplace(item.person_name, RankedDistance{item.person_name, d, 1});
+    if (!inserted) {
+      it->second.sample_count += 1;
+      if (d < it->second.distance) {
+        it->second.distance = d;
+      }
+    }
+  }
+
+  std::vector<RankedDistance> ranked;
+  ranked.reserve(best_by_person.size());
+  for (const auto& [_, item] : best_by_person) {
+    ranked.push_back(item);
   }
   std::sort(ranked.begin(), ranked.end(), [](const RankedDistance& a, const RankedDistance& b) {
     return a.distance < b.distance;
