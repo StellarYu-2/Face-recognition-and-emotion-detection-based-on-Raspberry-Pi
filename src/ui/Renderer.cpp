@@ -26,8 +26,11 @@ void Renderer::drawRecognition(const cv::Mat& frame_bgr, const std::vector<Track
     cv::rectangle(canvas, tr.box, color, 2);
 
     std::ostringstream oss;
-    oss << tr.identity.name << " (" << std::fixed << std::setprecision(1) << tr.identity.conf_pct << "%)"
-        << " | " << emotionToString(tr.emotion.label) << " (" << std::fixed << std::setprecision(1) << tr.emotion.conf_pct << "%)";
+    oss << tr.identity.name << " (" << std::fixed << std::setprecision(1) << tr.identity.conf_pct << "%)";
+    if (tr.emotion.label != EmotionLabel::Unknown && tr.emotion.conf_pct > 0.1F) {
+      oss << " | " << emotionToString(tr.emotion.label) << " (" << std::fixed << std::setprecision(1)
+          << tr.emotion.conf_pct << "%)";
+    }
     cv::putText(canvas, oss.str(), cv::Point(tr.box.x, std::max(0, tr.box.y - 8)), cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 2);
   }
   cv::imshow(window_name_, canvas);

@@ -20,10 +20,15 @@ class TrackManager {
 
   void tickWithoutDetections(std::uint64_t frame_id, std::uint64_t ts_ms);
   void updateEmotionsByTrackOrder(const std::vector<EmotionResult>& emotions, std::uint64_t ts_ms);
+  std::vector<int> previewMatches(const std::vector<Detection>& detections) const;
+  const Track* getTrackByIndex(int index) const;
 
   std::vector<TrackState> snapshot() const;
 
  private:
+  static std::vector<int> matchDetectionsToTracks(const std::vector<Detection>& detections,
+                                                  const std::vector<Track>& tracks,
+                                                  float iou_match_threshold);
   static float iou(const cv::Rect& a, const cv::Rect& b);
   static float centerDistanceRatio(const cv::Rect& a, const cv::Rect& b);
   static float ema(float old_value, float new_value, float alpha);

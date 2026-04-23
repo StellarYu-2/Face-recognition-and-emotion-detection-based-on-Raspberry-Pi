@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 
 #include <opencv2/imgproc.hpp>
@@ -11,6 +12,10 @@
 namespace asdun {
 
 namespace {
+
+constexpr float kRecognitionDetScoreFloor = 0.68F;
+constexpr float kEmotionDetScoreFloor = 0.72F;
+constexpr float kValidationScoreBypass = 0.94F;
 
 float laplacianVariance(const cv::Mat& bgr) {
   if (bgr.empty()) {
@@ -65,9 +70,78 @@ float adjustMarginThreshold(float base_margin_threshold,
   return std::clamp(adjusted, base_margin_threshold, base_margin_threshold + 0.05F);
 }
 
+std::uint64_t elapsedMs(std::uint64_t now_ms, std::uint64_t last_ms) {
+  if (last_ms == 0 || now_ms <= last_ms) {
+    return std::numeric_limits<std::uint64_t>::max();
+  }
+  return now_ms - last_ms;
+}
+
+bool qualityImproved(const Track* track, float blur_score, int min_face_side, float blur_gain, int size_gain) {
+  if (track == nullptr || track->last_recognition_ms == 0) {
+    return true;
+  }
+  return blur_score >= (track->last_recognition_blur_score + blur_gain) ||
+         min_face_side >= (track->last_recognition_face_size + size_gain);
+}
+
+bool shouldAttemptRecognition(const Track* track,
+                              bool selected,
+                              bool periodic_slot,
+                              std::uint64_t ts_ms,
+                              float blur_score,
+                              int min_face_side,
+                              int known_identity_cooldown_ms,
+                              int unknown_identity_cooldown_ms,
+                              float recognition_retrigger_blur_gain,
+                              int recognition_retrigger_size_gain) {
+  if (!selected) {
+    return false;
+  }
+  if (track == nullptr) {
+    return true;
+  }
+
+  const std::uint64_t since_last = elapsedMs(ts_ms, track->last_recognition_ms);
+  const bool improved = qualityImproved(track,
+                                        blur_score,
+                                        min_face_side,
+                                        recognition_retrigger_blur_gain,
+                                        recognition_retrigger_size_gain);
+  if (!track->identity.known) {
+    return improved || since_last >= static_cast<std::uint64_t>(std::max(unknown_identity_cooldown_ms, 0));
+  }
+
+  const bool weak_identity = track->identity.conf_pct < 78.0F || track->identity.margin < 0.12F;
+  if (improved && since_last >= static_cast<std::uint64_t>(std::max(known_identity_cooldown_ms / 2, 1))) {
+    return true;
+  }
+  if (weak_identity && since_last >= static_cast<std::uint64_t>(std::max(unknown_identity_cooldown_ms, 0))) {
+    return true;
+  }
+  return periodic_slot && since_last >= static_cast<std::uint64_t>(std::max(known_identity_cooldown_ms, 0));
+}
+
+bool shouldAttemptEmotion(const Track* track,
+                          bool selected,
+                          bool periodic_slot,
+                          std::uint64_t ts_ms,
+                          int emotion_cooldown_ms) {
+  if (!selected || !periodic_slot || track == nullptr) {
+    return false;
+  }
+  if (track->detection_hits < 3) {
+    return false;
+  }
+  const std::uint64_t since_last = elapsedMs(ts_ms, track->last_emotion_ms);
+  return since_last >= static_cast<std::uint64_t>(std::max(emotion_cooldown_ms, 0));
+}
+
 }  // namespace
 
 InferencePipeline::InferencePipeline(FaceDetector& detector,
+                                     FaceLandmarkEstimator& landmark_estimator,
+                                     FaceAligner& face_aligner,
                                      FaceRecognizer& recognizer,
                                      EmotionRecognizer& emotion_recognizer,
                                      EmbeddingStore& embedding_store,
@@ -76,17 +150,26 @@ InferencePipeline::InferencePipeline(FaceDetector& detector,
                                      int recognition_interval,
                                      int emotion_interval,
                                      int max_inference_faces,
+                                     int max_emotion_faces,
                                      float recognition_crop_scale,
                                      int recognition_min_face_size,
                                      float recognition_blur_threshold,
                                      float recognition_margin_threshold,
+                                     int known_identity_cooldown_ms,
+                                     int unknown_identity_cooldown_ms,
+                                     float recognition_retrigger_blur_gain,
+                                     int recognition_retrigger_size_gain,
                                      float emotion_crop_scale,
                                      int emotion_min_face_size,
+                                     int emotion_cooldown_ms,
+                                     bool emotion_require_known_identity,
                                      bool debug_recognition,
                                      bool debug_emotion,
                                      float match_threshold,
                                      float sigmoid_tau)
     : detector_(detector),
+      landmark_estimator_(landmark_estimator),
+      face_aligner_(face_aligner),
       recognizer_(recognizer),
       emotion_recognizer_(emotion_recognizer),
       embedding_store_(embedding_store),
@@ -95,12 +178,19 @@ InferencePipeline::InferencePipeline(FaceDetector& detector,
       recognition_interval_(recognition_interval > 0 ? recognition_interval : 1),
       emotion_interval_(emotion_interval > 0 ? emotion_interval : 1),
       max_inference_faces_(max_inference_faces > 0 ? max_inference_faces : 1),
+      max_emotion_faces_(max_emotion_faces > 0 ? max_emotion_faces : 1),
       recognition_crop_scale_(recognition_crop_scale > 1.0F ? recognition_crop_scale : 1.0F),
       recognition_min_face_size_(recognition_min_face_size > 0 ? recognition_min_face_size : 96),
       recognition_blur_threshold_(recognition_blur_threshold > 0.0F ? recognition_blur_threshold : 35.0F),
       recognition_margin_threshold_(recognition_margin_threshold > 0.0F ? recognition_margin_threshold : 0.05F),
+      known_identity_cooldown_ms_(known_identity_cooldown_ms > 0 ? known_identity_cooldown_ms : 900),
+      unknown_identity_cooldown_ms_(unknown_identity_cooldown_ms > 0 ? unknown_identity_cooldown_ms : 250),
+      recognition_retrigger_blur_gain_(recognition_retrigger_blur_gain > 0.0F ? recognition_retrigger_blur_gain : 18.0F),
+      recognition_retrigger_size_gain_(recognition_retrigger_size_gain > 0 ? recognition_retrigger_size_gain : 20),
       emotion_crop_scale_(emotion_crop_scale > 1.0F ? emotion_crop_scale : recognition_crop_scale_),
       emotion_min_face_size_(emotion_min_face_size > 0 ? emotion_min_face_size : 96),
+      emotion_cooldown_ms_(emotion_cooldown_ms > 0 ? emotion_cooldown_ms : 600),
+      emotion_require_known_identity_(emotion_require_known_identity),
       debug_recognition_(debug_recognition),
       debug_emotion_(debug_emotion),
       match_threshold_(match_threshold),
@@ -137,6 +227,10 @@ RecognitionResult InferencePipeline::process(const FramePacket& frame) {
 
   if (do_detect) {
     auto detections = detector_.detect(frame.bgr);
+    if (debug_recognition_ && detections.empty()) {
+      std::cout << "[Detect] frame=" << frame.frame_id << " dets=0" << '\n';
+    }
+    const std::vector<int> preview_matches = track_manager_.previewMatches(detections);
     std::vector<IdentityResult> identities;
     std::vector<EmotionResult> emotions;
     identities.reserve(detections.size());
@@ -156,8 +250,52 @@ RecognitionResult InferencePipeline::process(const FramePacket& frame) {
       selected[ranked_indices[i]] = true;
     }
 
+    std::vector<bool> emotion_selected(detections.size(), false);
+    std::vector<std::size_t> emotion_ranked_indices = ranked_indices;
+    std::sort(emotion_ranked_indices.begin(), emotion_ranked_indices.end(), [&](std::size_t a, std::size_t b) {
+      const Track* track_a =
+          (a < preview_matches.size()) ? track_manager_.getTrackByIndex(preview_matches[a]) : nullptr;
+      const Track* track_b =
+          (b < preview_matches.size()) ? track_manager_.getTrackByIndex(preview_matches[b]) : nullptr;
+      const bool known_a = track_a != nullptr && track_a->identity.known;
+      const bool known_b = track_b != nullptr && track_b->identity.known;
+      if (known_a != known_b) {
+        return known_a > known_b;
+      }
+
+      const int hits_a = (track_a != nullptr) ? track_a->detection_hits : 0;
+      const int hits_b = (track_b != nullptr) ? track_b->detection_hits : 0;
+      if (hits_a != hits_b) {
+        return hits_a > hits_b;
+      }
+
+      if (std::abs(detections[a].det_score - detections[b].det_score) > 1e-6F) {
+        return detections[a].det_score > detections[b].det_score;
+      }
+      return detections[a].box.area() > detections[b].box.area();
+    });
+
+    const std::size_t emotion_count =
+        std::min<std::size_t>(emotion_ranked_indices.size(), static_cast<std::size_t>(max_emotion_faces_));
+    for (std::size_t i = 0; i < emotion_count; ++i) {
+      emotion_selected[emotion_ranked_indices[i]] = true;
+    }
+
     for (std::size_t idx = 0; idx < detections.size(); ++idx) {
-      const auto& det = detections[idx];
+      auto& det = detections[idx];
+      const Track* matched_track =
+          (idx < preview_matches.size()) ? track_manager_.getTrackByIndex(preview_matches[idx]) : nullptr;
+      const bool has_detector_landmarks = det.landmarks.valid;
+      const bool alignment_required = selected[idx] && (has_detector_landmarks || landmark_estimator_.ready());
+      if (alignment_required) {
+        const auto landmarks = has_detector_landmarks ? det.landmarks : landmark_estimator_.estimate(frame.bgr, det.box);
+        if (landmarks.valid) {
+          const cv::Rect refined_box = face_aligner_.refineBox(landmarks, frame.bgr.size());
+          if (refined_box.width > 0 && refined_box.height > 0) {
+            det.box = (det.box | refined_box) & cv::Rect(0, 0, frame.bgr.cols, frame.bgr.rows);
+          }
+        }
+      }
       const cv::Rect recognition_rect = expandRect(det.box, frame.bgr.cols, frame.bgr.rows, recognition_crop_scale_);
       const cv::Rect emotion_rect = expandRect(det.box, frame.bgr.cols, frame.bgr.rows, emotion_crop_scale_);
       if (recognition_rect.width <= 0 || recognition_rect.height <= 0) {
@@ -166,47 +304,64 @@ RecognitionResult InferencePipeline::process(const FramePacket& frame) {
         continue;
       }
 
-      if (!selected[idx]) {
-        identities.push_back(IdentityResult{});
-        emotions.push_back(EmotionResult{});
-        continue;
-      }
+      const cv::Mat recognition_face = frame.bgr(recognition_rect);
+      const float blur_score = (selected[idx] || emotion_selected[idx]) ? laplacianVariance(recognition_face) : 0.0F;
+      const int min_face_side = std::min(recognition_rect.width, recognition_rect.height);
+      const bool is_new_or_unknown_track = (matched_track == nullptr) || !matched_track->identity.known;
+      const bool require_face_validation =
+          selected[idx] && is_new_or_unknown_track && det.det_score < kValidationScoreBypass;
+      const bool face_validation_ok = !require_face_validation || detector_.validateFaceRegion(frame.bgr, det.box);
+      const bool recognition_quality_ok =
+          recognition_rect.width >= recognition_min_face_size_ && recognition_rect.height >= recognition_min_face_size_ &&
+          blur_score >= recognition_blur_threshold_ && det.det_score >= kRecognitionDetScoreFloor && face_validation_ok;
+      const bool attempt_recognition =
+          recognition_quality_ok &&
+          shouldAttemptRecognition(matched_track,
+                                   selected[idx],
+                                   do_recognize,
+                                   frame.ts_ms,
+                                   blur_score,
+                                   min_face_side,
+                                   known_identity_cooldown_ms_,
+                                   unknown_identity_cooldown_ms_,
+                                   recognition_retrigger_blur_gain_,
+                                   recognition_retrigger_size_gain_);
 
-      const cv::Mat recognition_face = frame.bgr(recognition_rect).clone();
-      if (do_recognize) {
+      if (attempt_recognition) {
         IdentityResult id{};
-        const float blur_score = laplacianVariance(recognition_face);
-        const int min_face_side = std::min(recognition_rect.width, recognition_rect.height);
-        const bool recognition_quality_ok =
-            recognition_rect.width >= recognition_min_face_size_ && recognition_rect.height >= recognition_min_face_size_ &&
-            blur_score >= recognition_blur_threshold_ && det.det_score >= 0.50F;
-        if (recognition_quality_ok) {
-          const float dynamic_match_threshold =
-              adjustMatchThreshold(match_threshold_, min_face_side, recognition_min_face_size_, blur_score, recognition_blur_threshold_);
-          const float dynamic_margin_threshold = adjustMarginThreshold(
-              recognition_margin_threshold_, min_face_side, recognition_min_face_size_, blur_score, recognition_blur_threshold_);
-          id = embedding_store_.match(recognizer_.extractEmbedding(recognition_face),
-                                      dynamic_match_threshold,
-                                      sigmoid_tau_,
-                                      dynamic_margin_threshold);
+        const float dynamic_match_threshold =
+            adjustMatchThreshold(match_threshold_, min_face_side, recognition_min_face_size_, blur_score, recognition_blur_threshold_);
+        const float dynamic_margin_threshold =
+            adjustMarginThreshold(recognition_margin_threshold_,
+                                  min_face_side,
+                                  recognition_min_face_size_,
+                                  blur_score,
+                                  recognition_blur_threshold_);
+        const auto embedding = recognizer_.extractEmbedding(recognition_face);
+        id.attempted = true;
+        id.input_blur_score = blur_score;
+        id.input_min_face_size = min_face_side;
+        if (embedding.empty()) {
+          id.measured = true;
+          id.known = false;
+          id.distance = std::numeric_limits<float>::max();
+          std::ostringstream skip;
+          skip << std::fixed << std::setprecision(3);
+          skip << "decision=skip_embedding shown=Unknown area=" << det.box.area() << " blur=" << blur_score
+               << " det=" << det.det_score << " src=crop";
+          id.debug_summary = skip.str();
+        } else {
+          id = embedding_store_.match(embedding, dynamic_match_threshold, sigmoid_tau_, dynamic_margin_threshold);
+          id.attempted = true;
+          id.input_blur_score = blur_score;
+          id.input_min_face_size = min_face_side;
           if (!id.debug_summary.empty()) {
             std::ostringstream extra;
             extra << std::fixed << std::setprecision(3);
             extra << id.debug_summary << " thr=" << dynamic_match_threshold << " gap_thr=" << dynamic_margin_threshold
-                  << " det=" << det.det_score;
+                  << " det=" << det.det_score << " src=crop";
             id.debug_summary = extra.str();
           }
-        } else {
-          const bool size_ok =
-              recognition_rect.width >= recognition_min_face_size_ && recognition_rect.height >= recognition_min_face_size_;
-          const bool blur_ok = blur_score >= recognition_blur_threshold_;
-          const bool det_ok = det.det_score >= 0.50F;
-          std::ostringstream skip;
-          skip << std::fixed << std::setprecision(3);
-          skip << "decision=skip_quality shown=Unknown area=" << det.box.area() << " blur=" << blur_score
-               << " size_ok=" << (size_ok ? 1 : 0) << " blur_ok=" << (blur_ok ? 1 : 0) << " det_ok=" << (det_ok ? 1 : 0)
-               << " det=" << det.det_score;
-          id.debug_summary = skip.str();
         }
         if (debug_recognition_) {
           std::cout << "[Recog] frame=" << frame.frame_id << " det=" << idx << " area=" << det.box.area() << " "
@@ -214,20 +369,78 @@ RecognitionResult InferencePipeline::process(const FramePacket& frame) {
         }
         identities.push_back(std::move(id));
       } else {
-        identities.push_back(IdentityResult{});
+        IdentityResult id{};
+        if (selected[idx] && !face_validation_ok) {
+          id.attempted = true;
+          id.measured = true;
+          id.known = false;
+          id.input_blur_score = blur_score;
+          id.input_min_face_size = min_face_side;
+          std::ostringstream reject;
+          reject << std::fixed << std::setprecision(3);
+          reject << "decision=reject_validation shown=Unknown area=" << det.box.area() << " blur=" << blur_score
+                 << " det=" << det.det_score;
+          id.debug_summary = reject.str();
+          if (debug_recognition_) {
+            std::cout << "[Recog] frame=" << frame.frame_id << " det=" << idx << " area=" << det.box.area() << " "
+                      << id.debug_summary << '\n';
+          }
+        } else if (selected[idx] && !recognition_quality_ok) {
+          const bool size_ok =
+              recognition_rect.width >= recognition_min_face_size_ && recognition_rect.height >= recognition_min_face_size_;
+          const bool blur_ok = blur_score >= recognition_blur_threshold_;
+          const bool det_ok = det.det_score >= kRecognitionDetScoreFloor;
+          std::ostringstream skip;
+          skip << std::fixed << std::setprecision(3);
+          skip << "decision=skip_quality shown=Unknown area=" << det.box.area() << " blur=" << blur_score
+               << " size_ok=" << (size_ok ? 1 : 0) << " blur_ok=" << (blur_ok ? 1 : 0) << " det_ok=" << (det_ok ? 1 : 0)
+               << " det=" << det.det_score;
+          id.debug_summary = skip.str();
+          if (debug_recognition_) {
+            std::cout << "[Recog] frame=" << frame.frame_id << " det=" << idx << " area=" << det.box.area() << " "
+                      << id.debug_summary << '\n';
+          }
+        }
+        identities.push_back(std::move(id));
       }
 
-      if (do_emotion && emotion_rect.width >= emotion_min_face_size_ && emotion_rect.height >= emotion_min_face_size_ &&
-          det.det_score >= 0.55F) {
-        auto emotion = emotion_recognizer_.infer(frame.bgr(emotion_rect).clone());
+      const IdentityResult& emotion_identity = identities.back();
+      const bool known_for_emotion =
+          emotion_identity.known || (matched_track != nullptr && matched_track->identity.known);
+      const bool identity_ok_for_emotion = !emotion_require_known_identity_ || known_for_emotion;
+      const cv::Mat emotion_face = frame.bgr(emotion_rect);
+      const float emotion_blur_score = emotion_selected[idx] ? laplacianVariance(emotion_face) : 0.0F;
+      const bool emotion_quality_ok = emotion_rect.width >= emotion_min_face_size_ &&
+                                      emotion_rect.height >= emotion_min_face_size_ &&
+                                      det.det_score >= kEmotionDetScoreFloor &&
+                                      emotion_blur_score >= (recognition_blur_threshold_ * 0.75F) &&
+                                      face_validation_ok && identity_ok_for_emotion;
+      const bool attempt_emotion =
+          emotion_quality_ok &&
+          shouldAttemptEmotion(matched_track, emotion_selected[idx], do_emotion, frame.ts_ms, emotion_cooldown_ms_);
+      if (attempt_emotion) {
+        auto emotion = emotion_recognizer_.infer(emotion_face);
+        emotion.attempted = true;
         if (debug_emotion_) {
           std::cout << "[Emotion] frame=" << frame.frame_id << " det=" << idx << " area=" << det.box.area()
                     << " label=" << emotionToString(emotion.label) << " conf=" << emotion.conf_pct
+                    << " known=" << (known_for_emotion ? 1 : 0)
+                    << " blur=" << emotion_blur_score
                     << " " << emotion.debug_summary << '\n';
         }
         emotions.push_back(std::move(emotion));
       } else {
-        emotions.push_back(EmotionResult{EmotionLabel::Unknown, 0.0F});
+        if (debug_emotion_ && emotion_selected[idx]) {
+          std::cout << "[Emotion] frame=" << frame.frame_id << " det=" << idx << " area=" << det.box.area()
+                    << " skipped known=" << (known_for_emotion ? 1 : 0)
+                    << " require_known=" << (emotion_require_known_identity_ ? 1 : 0)
+                    << " blur=" << emotion_blur_score
+                    << " det_ok=" << (det.det_score >= kEmotionDetScoreFloor ? 1 : 0)
+                    << " size_ok=" << ((emotion_rect.width >= emotion_min_face_size_ &&
+                                         emotion_rect.height >= emotion_min_face_size_) ? 1 : 0)
+                    << " face_ok=" << (face_validation_ok ? 1 : 0) << '\n';
+        }
+        emotions.push_back(EmotionResult{});
       }
     }
 

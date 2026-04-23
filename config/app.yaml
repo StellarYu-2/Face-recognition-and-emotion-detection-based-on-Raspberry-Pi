@@ -2,26 +2,34 @@
 # - "0" for /dev/video0
 # - "gst:<pipeline>" for GStreamer pipeline
 camera_source: "0"
-frame_width: 640
-frame_height: 480
+frame_width: 424
+frame_height: 240
 frame_fps: 30
+opencv_num_threads: 4
 enroll_target_images: 8
 
 # Pipeline schedule
-detect_interval: 2
-recognition_interval: 4
+detect_interval: 4
+recognition_interval: 8
 emotion_interval: 20
-max_inference_faces: 1
+max_inference_faces: 2
+max_emotion_faces: 1
 recognition_crop_scale: 1.06
 recognition_min_face_size: 96
 recognition_blur_threshold: 35.0
 recognition_margin_threshold: 0.11
+known_identity_cooldown_ms: 1200
+unknown_identity_cooldown_ms: 260
+recognition_retrigger_blur_gain: 18.0
+recognition_retrigger_size_gain: 20
 emotion_crop_scale: 1.14
 emotion_min_face_size: 96
+emotion_cooldown_ms: 1
+emotion_require_known_identity: false
 emotion_non_calm_floor: 0.22
 emotion_handoff_margin: 0.08
-debug_recognition: false
-debug_emotion: false
+debug_recognition: true
+debug_emotion: true
 
 # Enrollment quality gate
 min_face_area_ratio: 0.08
@@ -43,14 +51,15 @@ images_root: "./data/images"
 # Haar cascade path on Raspberry Pi Debian
 face_cascade_path: "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
 
-# NCNN detector (current converted UltraFace model)
-detector_param_path: "./models/onnx_to_ncnn/face_detector.param"
-detector_bin_path: "./models/onnx_to_ncnn/face_detector.bin"
-detector_input_width: 320
-detector_input_height: 240
-detector_score_threshold: 0.60
-detector_nms_threshold: 0.18
-detector_enable_cascade_fallback: false
+# NCNN detector
+# Current best path: SCRFD 500M BNKPS (detection + 5 keypoints)
+detector_param_path: "./models/onnx_to_ncnn/scrfd_500m_bnkps_shape640x640.param"
+detector_bin_path: "./models/onnx_to_ncnn/scrfd_500m_bnkps_shape640x640.bin"
+detector_input_width: 640
+detector_input_height: 640
+detector_score_threshold: 0.45
+detector_nms_threshold: 0.40
+detector_enable_cascade_fallback: true
 detector_input_blob: "in0"
 detector_score_blob: "out0"
 detector_bbox_blob: "out1"
@@ -62,6 +71,21 @@ recognizer_input_size: 112
 recognizer_color_order: "bgr"
 recognizer_input_blob: "data"
 recognizer_output_blob: "fc1"
+
+# Optional standalone NCNN 5-point face landmark model for alignment.
+# When detector already outputs 5 keypoints (for example SCRFD BNKPS), this can stay missing.
+landmark_param_path: "./models/onnx_to_ncnn/face_landmark_5.param"
+landmark_bin_path: "./models/onnx_to_ncnn/face_landmark_5.bin"
+landmark_input_width: 112
+landmark_input_height: 112
+landmark_crop_scale: 1.45
+landmark_coord_mode: "zero_one"
+landmark_color_order: "rgb"
+landmark_mean: 127.5
+landmark_norm: 0.0078125
+landmark_input_blob: "input"
+landmark_output_blob: "output"
+aligned_face_size: 112
 
 # NCNN emotion classifier (current converted FER+ model)
 # Current class order:

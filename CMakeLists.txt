@@ -6,8 +6,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ENABLE_VULKAN "Enable Vulkan backend for ncnn if available." OFF)
+option(REQUIRE_NCNN "Require ncnn for detector/recognizer/emotion inference." ON)
 
-find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui videoio objdetect)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui videoio objdetect calib3d)
 find_package(SQLite3 REQUIRED)
 find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -18,6 +19,14 @@ pkg_check_modules(LIBCAMERA QUIET libcamera)
 find_package(ncnn QUIET)
 if(ncnn_FOUND)
   add_compile_definitions(USE_NCNN=1)
+  message(STATUS "ncnn found: USE_NCNN enabled")
+elseif(REQUIRE_NCNN)
+  message(FATAL_ERROR
+    "ncnn was not found, so NCNN model inference would be disabled. "
+    "Install ncnn on the Raspberry Pi first, or configure with "
+    "-DREQUIRE_NCNN=OFF only if you intentionally want the fallback path.")
+else()
+  message(WARNING "ncnn was not found: building fallback-only binary without USE_NCNN")
 endif()
 
 if(LIBCAMERA_FOUND)
@@ -31,6 +40,8 @@ add_executable(asdun_access
   src/camera/CameraManager.cpp
   src/engine/ConfidenceMapper.cpp
   src/engine/FaceDetector.cpp
+  src/engine/FaceLandmarkEstimator.cpp
+  src/engine/FaceAligner.cpp
   src/engine/FaceRecognizer.cpp
   src/engine/EmotionRecognizer.cpp
   src/engine/InferencePipeline.cpp

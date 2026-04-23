@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <iostream>
+#include <vector>
 
 #include <opencv2/imgproc.hpp>
 
@@ -98,15 +100,27 @@ bool EmotionRecognizer::init(const std::string& model_param_path,
   }
 
 #ifdef USE_NCNN
-  if (std::filesystem::exists(model_param_path_) && std::filesystem::exists(model_bin_path_)) {
+  const bool param_exists = std::filesystem::exists(model_param_path_);
+  const bool bin_exists = std::filesystem::exists(model_bin_path_);
+  if (param_exists && bin_exists) {
     net_.clear();
     net_.opt.use_vulkan_compute = false;
     net_.opt.lightmode = true;
+    net_.opt.use_packing_layout = true;
     net_.opt.num_threads = 4;
     if (net_.load_param(model_param_path_.c_str()) == 0 && net_.load_model(model_bin_path_.c_str()) == 0) {
       ncnn_ready_ = true;
     }
   }
+  if (ncnn_ready_) {
+    std::cout << "[EmotionRecognizer] using ncnn model: " << model_param_path_ << std::endl;
+  } else {
+    std::cerr << "[EmotionRecognizer] ncnn model not loaded, using heuristic fallback. param_exists="
+              << (param_exists ? 1 : 0) << " bin_exists=" << (bin_exists ? 1 : 0)
+              << " param=" << model_param_path_ << " bin=" << model_bin_path_ << std::endl;
+  }
+#else
+  std::cerr << "[EmotionRecognizer] built without ncnn, using heuristic fallback." << std::endl;
 #endif
 
   initialized_ = true;
@@ -150,6 +164,11 @@ EmotionResult EmotionRecognizer::infer(const cv::Mat& face_bgr) const {
   }
 #endif
 
+  return inferWithHeuristics(face_bgr);
+}
+
+EmotionResult EmotionRecognizer::inferWithHeuristics(const cv::Mat& face_bgr) const {
+  EmotionResult out{};
   const cv::Mat normalized = normalizeFace(face_bgr);
   const int width = normalized.cols;
   const int height = normalized.rows;
@@ -198,10 +217,10 @@ EmotionResult EmotionRecognizer::infer(const cv::Mat& face_bgr) const {
     return out;
   }
 
-  if (global_contrast > 55.0F && upper_edges > 0.14F && mouth_dark < 0.10F) {
+  if (global_contrast > 68.0F && upper_edges > 0.20F && mouth_dark < 0.08F) {
     out.label = EmotionLabel::Angry;
-    out.conf_pct = clampPct(58.0F + upper_edges * 150.0F);
-    assignGroupedScores(out, 0.14F, 0.04F, 0.07F, 0.75F);
+    out.conf_pct = clampPct(52.0F + upper_edges * 115.0F);
+    assignGroupedScores(out, 0.30F, 0.06F, 0.10F, 0.54F);
     out.debug_summary = "heuristic=high_tension";
     return out;
   }

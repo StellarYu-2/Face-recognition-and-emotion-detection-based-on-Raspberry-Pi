@@ -16,6 +16,11 @@ namespace asdun {
 
 class FaceDetector {
  public:
+  enum class NcnnModelKind {
+    UltraFace = 0,
+    ScrfdKps
+  };
+
   FaceDetector(std::string cascade_path = "",
                std::string model_param_path = "",
                std::string model_bin_path = "",
@@ -29,6 +34,8 @@ class FaceDetector {
                std::string bbox_blob_name = "boxes");
   bool init();
   std::vector<Detection> detect(const cv::Mat& frame_bgr) const;
+  bool validateFaceRegion(const cv::Mat& frame_bgr, const cv::Rect& face_box) const;
+  bool providesLandmarks() const { return ncnn_model_kind_ == NcnnModelKind::ScrfdKps; }
 
  private:
   struct PriorBox {
@@ -39,8 +46,10 @@ class FaceDetector {
   };
 
   std::vector<Detection> detectWithNcnn(const cv::Mat& frame_bgr) const;
+  std::vector<Detection> detectWithScrfdKps(const cv::Mat& frame_bgr) const;
   std::vector<PriorBox> generatePriors() const;
   static std::vector<Detection> nms(const std::vector<Detection>& detections, float nms_threshold);
+  static NcnnModelKind detectModelKind(const std::string& model_param_path);
   void detectWithCascade(cv::CascadeClassifier& cascade,
                          const cv::Mat& gray,
                          bool mirror,
@@ -49,6 +58,7 @@ class FaceDetector {
                           const cv::Mat& gray,
                           double angle_deg,
                           std::vector<Detection>& out) const;
+  static bool isReasonableFaceBox(const cv::Rect& rect, int image_width, int image_height);
   static std::vector<Detection> suppressDuplicates(const std::vector<Detection>& detections);
   static cv::Point2f applyAffine(const cv::Mat& affine, const cv::Point2f& pt);
   static float iou(const cv::Rect& a, const cv::Rect& b);
@@ -71,6 +81,7 @@ class FaceDetector {
   bool ncnn_ready_{false};
   bool initialized_{false};
   bool profile_initialized_{false};
+  NcnnModelKind ncnn_model_kind_{NcnnModelKind::UltraFace};
 
 #ifdef USE_NCNN
   ncnn::Net net_{};
