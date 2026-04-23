@@ -5,31 +5,31 @@ camera_source: "0"
 frame_width: 424
 frame_height: 240
 frame_fps: 30
-opencv_num_threads: 4
+opencv_num_threads: 1
 enroll_target_images: 8
 
 # Pipeline schedule
-detect_interval: 4
-recognition_interval: 8
-emotion_interval: 20
-max_inference_faces: 2
+detect_interval: 8
+recognition_interval: 24
+emotion_interval: 24
+max_inference_faces: 1
 max_emotion_faces: 1
 recognition_crop_scale: 1.06
-recognition_min_face_size: 96
+recognition_min_face_size: 80
 recognition_blur_threshold: 35.0
 recognition_margin_threshold: 0.11
 known_identity_cooldown_ms: 1200
 unknown_identity_cooldown_ms: 260
 recognition_retrigger_blur_gain: 18.0
 recognition_retrigger_size_gain: 20
-emotion_crop_scale: 1.14
-emotion_min_face_size: 96
-emotion_cooldown_ms: 1
+emotion_crop_scale: 1.28
+emotion_min_face_size: 80
+emotion_cooldown_ms: 600
 emotion_require_known_identity: false
 emotion_non_calm_floor: 0.22
 emotion_handoff_margin: 0.08
-debug_recognition: true
-debug_emotion: true
+debug_recognition: false
+debug_emotion: false
 
 # Enrollment quality gate
 min_face_area_ratio: 0.08
@@ -41,7 +41,7 @@ match_threshold: 1.10
 sigmoid_tau: 0.10
 
 # Tracking
-track_ttl: 10
+track_ttl: 18
 track_iou_threshold: 0.20
 
 # Storage
@@ -52,14 +52,14 @@ images_root: "./data/images"
 face_cascade_path: "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
 
 # NCNN detector
-# Current best path: SCRFD 500M BNKPS (detection + 5 keypoints)
-detector_param_path: "./models/onnx_to_ncnn/scrfd_500m_bnkps_shape640x640.param"
-detector_bin_path: "./models/onnx_to_ncnn/scrfd_500m_bnkps_shape640x640.bin"
-detector_input_width: 640
-detector_input_height: 640
-detector_score_threshold: 0.45
-detector_nms_threshold: 0.40
-detector_enable_cascade_fallback: true
+# Fast path: UltraFace/RFB 320x240. Much lighter than SCRFD 640x640, but no keypoints.
+detector_param_path: "./models/onnx_to_ncnn/face_detector.param"
+detector_bin_path: "./models/onnx_to_ncnn/face_detector.bin"
+detector_input_width: 320
+detector_input_height: 240
+detector_score_threshold: 0.60
+detector_nms_threshold: 0.18
+detector_enable_cascade_fallback: false
 detector_input_blob: "in0"
 detector_score_blob: "out0"
 detector_bbox_blob: "out1"

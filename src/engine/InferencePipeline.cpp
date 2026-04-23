@@ -15,7 +15,7 @@ namespace {
 
 constexpr float kRecognitionDetScoreFloor = 0.68F;
 constexpr float kEmotionDetScoreFloor = 0.72F;
-constexpr float kValidationScoreBypass = 0.94F;
+constexpr float kValidationScoreBypass = 0.76F;
 
 float laplacianVariance(const cv::Mat& bgr) {
   if (bgr.empty()) {
@@ -75,6 +75,12 @@ std::uint64_t elapsedMs(std::uint64_t now_ms, std::uint64_t last_ms) {
     return std::numeric_limits<std::uint64_t>::max();
   }
   return now_ms - last_ms;
+}
+
+std::uint64_t intervalToDetectionCycles(int interval_frames, int detect_interval) {
+  const int safe_detect_interval = std::max(detect_interval, 1);
+  const int safe_interval = std::max(interval_frames, safe_detect_interval);
+  return static_cast<std::uint64_t>((safe_interval + safe_detect_interval - 1) / safe_detect_interval);
 }
 
 bool qualityImproved(const Track* track, float blur_score, int min_face_side, float blur_gain, int size_gain) {
@@ -222,8 +228,11 @@ RecognitionResult InferencePipeline::process(const FramePacket& frame) {
   }
 
   const bool do_detect = ((frame.frame_id % static_cast<std::uint64_t>(detect_interval_)) == 0);
-  const bool do_recognize = ((frame.frame_id % static_cast<std::uint64_t>(recognition_interval_)) == 0);
-  const bool do_emotion = ((frame.frame_id % static_cast<std::uint64_t>(emotion_interval_)) == 0);
+  const std::uint64_t detection_cycle = do_detect ? (frame.frame_id / static_cast<std::uint64_t>(detect_interval_)) : 0;
+  const bool do_recognize =
+      do_detect && (detection_cycle % intervalToDetectionCycles(recognition_interval_, detect_interval_) == 0);
+  const bool do_emotion =
+      do_detect && (detection_cycle % intervalToDetectionCycles(emotion_interval_, detect_interval_) == 0);
 
   if (do_detect) {
     auto detections = detector_.detect(frame.bgr);
@@ -409,8 +418,10 @@ RecognitionResult InferencePipeline::process(const FramePacket& frame) {
           emotion_identity.known || (matched_track != nullptr && matched_track->identity.known);
       const bool identity_ok_for_emotion = !emotion_require_known_identity_ || known_for_emotion;
       const cv::Mat emotion_face = frame.bgr(emotion_rect);
-      const float emotion_blur_score = emotion_selected[idx] ? laplacianVariance(emotion_face) : 0.0F;
-      const bool emotion_quality_ok = emotion_rect.width >= emotion_min_face_size_ &&
+      const bool emotion_slot_selected = emotion_selected[idx] && do_emotion;
+      const float emotion_blur_score = emotion_slot_selected ? laplacianVariance(emotion_face) : 0.0F;
+      const bool emotion_quality_ok = emotion_slot_selected &&
+                                      emotion_rect.width >= emotion_min_face_size_ &&
                                       emotion_rect.height >= emotion_min_face_size_ &&
                                       det.det_score >= kEmotionDetScoreFloor &&
                                       emotion_blur_score >= (recognition_blur_threshold_ * 0.75F) &&

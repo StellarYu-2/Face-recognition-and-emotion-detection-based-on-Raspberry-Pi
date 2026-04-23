@@ -4,6 +4,7 @@ set -euo pipefail
 PREFIX="${PREFIX:-/usr/local}"
 SRC_DIR="${SRC_DIR:-$HOME/ncnn}"
 BUILD_DIR="${BUILD_DIR:-$SRC_DIR/build}"
+RPI4_FLAGS="${RPI4_FLAGS:--O3 -DNDEBUG -mcpu=cortex-a72 -mtune=cortex-a72}"
 
 echo "[ncnn] Installing build dependencies..."
 sudo apt update
@@ -26,6 +27,8 @@ echo "[ncnn] Configuring..."
 cmake -S "$SRC_DIR" -B "$BUILD_DIR" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+  -DCMAKE_C_FLAGS_RELEASE="$RPI4_FLAGS" \
+  -DCMAKE_CXX_FLAGS_RELEASE="$RPI4_FLAGS" \
   -DNCNN_VULKAN=OFF \
   -DNCNN_BUILD_TOOLS=OFF \
   -DNCNN_BUILD_EXAMPLES=OFF \

@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ENABLE_VULKAN "Enable Vulkan backend for ncnn if available." OFF)
 option(REQUIRE_NCNN "Require ncnn for detector/recognizer/emotion inference." ON)
+option(ENABLE_RPI4_CPU_TUNE "Tune generated code for Raspberry Pi 4 Cortex-A72." ON)
 
 find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui videoio objdetect calib3d)
 find_package(SQLite3 REQUIRED)
@@ -85,4 +86,7 @@ target_compile_definitions(asdun_access PRIVATE _CRT_SECURE_NO_WARNINGS)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(asdun_access PRIVATE -Wall -Wextra -Wpedantic)
+  if(ENABLE_RPI4_CPU_TUNE AND CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+    target_compile_options(asdun_access PRIVATE -mcpu=cortex-a72 -mtune=cortex-a72)
+  endif()
 endif()
