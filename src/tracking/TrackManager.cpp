@@ -501,6 +501,53 @@ void TrackManager::updateEmotionsByTrackOrder(const std::vector<EmotionResult>& 
   }
 }
 
+void TrackManager::applyExternalAnalyses(const std::vector<ExternalTrackAnalysis>& analyses,
+                                         std::uint64_t now_ms,
+                                         std::uint64_t max_age_ms,
+                                         bool apply_identity,
+                                         bool apply_emotion) {
+  for (const auto& analysis : analyses) {
+    if (analysis.track_id < 0) {
+      continue;
+    }
+    if (max_age_ms > 0 && now_ms > analysis.ts_ms && now_ms - analysis.ts_ms > max_age_ms) {
+      continue;
+    }
+
+    auto track_it = std::find_if(tracks_.begin(), tracks_.end(), [&](const Track& tr) {
+      return tr.id == analysis.track_id;
+    });
+    if (track_it == tracks_.end()) {
+      continue;
+    }
+
+    Track& tr = *track_it;
+    if (apply_identity && analysis.has_identity) {
+      IdentityResult id = analysis.identity;
+      id.attempted = true;
+      id.measured = true;
+      tr.identity = std::move(id);
+      tr.pending_identity = IdentityResult{};
+      tr.pending_identity_hits = 0;
+      tr.unknown_identity_streak = 0;
+      tr.last_recognition_frame_id = analysis.frame_id;
+      tr.last_recognition_ms = now_ms;
+      if (tr.identity.known) {
+        tr.last_confirmed_identity_ms = now_ms;
+      }
+    }
+
+    if (apply_emotion && analysis.has_emotion) {
+      EmotionResult emotion = analysis.emotion;
+      emotion.attempted = true;
+      updateEmotionState(tr, emotion);
+      tr.last_emotion_ms = now_ms;
+    }
+
+    tr.last_update_ms = now_ms;
+  }
+}
+
 std::vector<TrackState> TrackManager::snapshot() const {
   std::vector<TrackState> out;
   out.reserve(tracks_.size());

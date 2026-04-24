@@ -1,11 +1,15 @@
 #include "core/App.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <vector>
 
 #include <opencv2/core/utility.hpp>
 #include <opencv2/imgproc.hpp>
@@ -18,6 +22,27 @@ namespace {
 bool parseBoolValue(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
+std::string trimValue(const std::string& value) {
+  auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
+  const auto begin = std::find_if_not(value.begin(), value.end(), is_space);
+  if (begin == value.end()) {
+    return "";
+  }
+  const auto end = std::find_if_not(value.rbegin(), value.rend(), is_space).base();
+  return std::string(begin, end);
+}
+
+std::string stripOptionalQuotes(std::string value) {
+  value = trimValue(value);
+  if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
+    return value.substr(1, value.size() - 2);
+  }
+  if (value.size() >= 2 && value.front() == '\'' && value.back() == '\'') {
+    return value.substr(1, value.size() - 2);
+  }
+  return value;
 }
 
 /**
@@ -129,23 +154,42 @@ bool App::loadConfig() {
   }
 
   std::string line;
+  bool reading_cloud_server_urls = false;
   while (std::getline(fin, line)) {
     // 截去行内注释
     const auto hash_pos = line.find('#');
     if (hash_pos != std::string::npos) {
       line = line.substr(0, hash_pos);
     }
+    const std::string trimmed_line = trim(line);
+    if (trimmed_line.empty()) {
+      continue;
+    }
+
+    if (reading_cloud_server_urls) {
+      if (trimmed_line.rfind("-", 0) == 0) {
+        const std::string url = stripOptionalQuotes(trim(trimmed_line.substr(1)));
+        if (!url.empty()) {
+          config_.cloud.server_urls.push_back(url);
+        }
+        continue;
+      }
+      reading_cloud_server_urls = false;
+    }
+
+    if (trimmed_line == "cloud_server_urls:") {
+      config_.cloud.server_urls.clear();
+      reading_cloud_server_urls = true;
+      continue;
+    }
+
     if (line.find(':') == std::string::npos) {
       continue;
     }
 
     const std::size_t colon = line.find(':');
     std::string key = trim(line.substr(0, colon));
-    std::string value = trim(line.substr(colon + 1));
-    // 去掉值两侧的引号
-    if (!value.empty() && value.front() == '"' && value.back() == '"' && value.size() >= 2) {
-      value = value.substr(1, value.size() - 2);
-    }
+    std::string value = stripOptionalQuotes(trim(line.substr(colon + 1)));
     if (key.empty() || value.empty()) {
       continue;
     }
@@ -315,10 +359,56 @@ bool App::loadConfig() {
       } else if (key == "emotion_output_blob") {
         config_.emotion_output_blob = value;
       }
+      // 云端混合推理参数
+      else if (key == "inference_mode") {
+        config_.inference_mode = value;
+      } else if (key == "cloud_server_url") {
+        config_.cloud.server_url = value;
+      } else if (key == "cloud_health_check_path") {
+        config_.cloud.health_check_path = value;
+      } else if (key == "cloud_timeout_ms") {
+        config_.cloud.timeout_ms = std::stoi(value);
+      } else if (key == "cloud_connect_timeout_ms") {
+        config_.cloud.connect_timeout_ms = std::stoi(value);
+      } else if (key == "cloud_min_interval_ms") {
+        config_.cloud.min_interval_ms = std::stoi(value);
+      } else if (key == "cloud_max_queue_size") {
+        config_.cloud.max_queue_size = std::stoi(value);
+      } else if (key == "cloud_jpeg_quality") {
+        config_.cloud.jpeg_quality = std::stoi(value);
+      } else if (key == "cloud_crop_size") {
+        config_.cloud.crop_size = std::stoi(value);
+      } else if (key == "cloud_crop_scale") {
+        config_.cloud.crop_scale = std::stof(value);
+      } else if (key == "cloud_result_ttl_ms") {
+        config_.cloud.result_ttl_ms = std::stoi(value);
+      } else if (key == "cloud_identity_min_confidence") {
+        config_.cloud.identity_min_confidence = std::stof(value);
+      } else if (key == "cloud_identity_apply_unknown") {
+        config_.cloud.identity_apply_unknown = parseBoolValue(value);
+      } else if (key == "cloud_emotion_min_confidence") {
+        config_.cloud.emotion_min_confidence = std::stof(value);
+      } else if (key == "cloud_emotion_min_gap") {
+        config_.cloud.emotion_min_gap = std::stof(value);
+      } else if (key == "cloud_emotion_sad_min_confidence") {
+        config_.cloud.emotion_sad_min_confidence = std::stof(value);
+      } else if (key == "cloud_emotion_sad_min_gap") {
+        config_.cloud.emotion_sad_min_gap = std::stof(value);
+      } else if (key == "cloud_apply_identity") {
+        config_.cloud.apply_identity = parseBoolValue(value);
+      } else if (key == "cloud_apply_emotion") {
+        config_.cloud.apply_emotion = parseBoolValue(value);
+      } else if (key == "cloud_debug") {
+        config_.cloud.debug = parseBoolValue(value);
+      }
     } catch (...) {
       std::cerr << "[App] ignoring invalid config entry: " << key << "=" << value << std::endl;
     }
   }
+
+  std::string mode = config_.inference_mode;
+  std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  config_.cloud.enabled = (mode == "hybrid" || mode == "cloud");
   return true;
 }
 
@@ -475,6 +565,14 @@ bool App::initComponents() {
                                                   config_.debug_emotion,
                                                   config_.match_threshold,
                                                   config_.sigmoid_tau);
+
+  if (config_.cloud.enabled) {
+    cloud_client_ = std::make_unique<CloudClient>(config_.cloud);
+    if (!cloud_client_->start()) {
+      std::cerr << "[CloudClient] disabled; local pipeline will continue." << std::endl;
+      cloud_client_.reset();
+    }
+  }
   return true;
 }
 
@@ -557,6 +655,7 @@ void App::handleEnrollment() {
   const int target_images = std::max(1, config_.enroll_target_images);
   int captured = 0;
   int last_stage = -1;
+  std::vector<std::string> enrolled_image_paths;
   std::cout << "[Enrollment] press s to capture, q to quit. Target images: " << target_images << std::endl;
 
   while (captured < target_images) {
@@ -639,10 +738,18 @@ void App::handleEnrollment() {
         continue;
       }
       cv::Mat face = frame.bgr(bounded).clone();
+      cv::Rect saved_face_rect = bounded;
+      if (config_.cloud.enabled) {
+        const cv::Rect expanded_for_cloud = expandRect(best_face, frame.bgr.size(), std::max(1.0F, config_.cloud.crop_scale));
+        if (expanded_for_cloud.width > 0 && expanded_for_cloud.height > 0) {
+          saved_face_rect = expanded_for_cloud;
+        }
+      }
+      cv::Mat saved_face = frame.bgr(saved_face_rect).clone();
 
       // 保存图片到本地
       std::string image_path;
-      if (!file_store_->saveFaceImage(name, face, &image_path)) {
+      if (!file_store_->saveFaceImage(name, saved_face, &image_path)) {
         std::cerr << "[Enrollment] failed to save image." << std::endl;
         continue;
       }
@@ -663,6 +770,7 @@ void App::handleEnrollment() {
         continue;
       }
 
+      enrolled_image_paths.push_back(image_path);
       captured++;
       std::cout << "[Enrollment] captured: " << captured << "/" << target_images << std::endl;
     }
@@ -672,7 +780,131 @@ void App::handleEnrollment() {
   embedding_store_->reload();
   camera_->stop();
   renderer_->closeWindow();
+  if (cloud_client_ && cloud_client_->enabled() && !enrolled_image_paths.empty()) {
+    std::cout << "[Enrollment] uploading " << enrolled_image_paths.size() << " samples to cloud gallery..." << std::endl;
+    if (cloud_client_->enrollPerson(name, enrolled_image_paths, true)) {
+      std::cout << "[Enrollment] cloud gallery updated for: " << name << std::endl;
+    } else {
+      std::cerr << "[Enrollment] cloud gallery update failed; local enrollment is still saved." << std::endl;
+    }
+  }
   std::cout << "[Enrollment] finished." << std::endl;
+}
+
+cv::Rect App::expandRect(const cv::Rect& rect, const cv::Size& image_size, float scale) {
+  if (rect.width <= 0 || rect.height <= 0 || image_size.width <= 0 || image_size.height <= 0) {
+    return {};
+  }
+  const float cx = static_cast<float>(rect.x) + static_cast<float>(rect.width) * 0.5F;
+  const float cy = static_cast<float>(rect.y) + static_cast<float>(rect.height) * 0.5F;
+  const float w = static_cast<float>(rect.width) * scale;
+  const float h = static_cast<float>(rect.height) * scale;
+  cv::Rect expanded(static_cast<int>(std::round(cx - w * 0.5F)),
+                    static_cast<int>(std::round(cy - h * 0.5F)),
+                    static_cast<int>(std::round(w)),
+                    static_cast<int>(std::round(h)));
+  expanded &= cv::Rect(0, 0, image_size.width, image_size.height);
+  return expanded;
+}
+
+void App::submitCloudRequests(const FramePacket& frame, const std::vector<TrackState>& tracks) {
+  if (!cloud_client_ || !cloud_client_->enabled() || frame.bgr.empty()) {
+    return;
+  }
+
+  for (const auto& track : tracks) {
+    const cv::Rect crop_rect = expandRect(track.box, frame.bgr.size(), config_.cloud.crop_scale);
+    if (crop_rect.width <= 0 || crop_rect.height <= 0) {
+      continue;
+    }
+
+    CloudAnalysisRequest request{};
+    request.track_id = track.track_id;
+    request.frame_id = frame.frame_id;
+    request.ts_ms = frame.ts_ms;
+    request.face_bgr = frame.bgr(crop_rect);
+    request.local_known = track.identity.known;
+    request.local_name = track.identity.name;
+    request.local_conf_pct = track.identity.conf_pct;
+    cloud_client_->submit(request);
+  }
+}
+
+bool App::applyCloudResults(std::uint64_t now_ms) {
+  if (!cloud_client_ || !cloud_client_->enabled()) {
+    return false;
+  }
+
+  auto completed = cloud_client_->pollCompleted();
+  if (completed.empty()) {
+    return false;
+  }
+
+  auto emotion_gap = [](const EmotionResult& emotion) {
+    std::array<float, 4> probs = emotion.grouped_probs;
+    std::sort(probs.begin(), probs.end(), std::greater<float>());
+    return probs[0] - probs[1];
+  };
+
+  for (auto& result : completed) {
+    if (result.has_identity) {
+      const bool known_enough = result.identity.known && result.identity.conf_pct >= config_.cloud.identity_min_confidence;
+      const bool acceptable_unknown = !result.identity.known && config_.cloud.identity_apply_unknown;
+      if (!known_enough && !acceptable_unknown) {
+        if (config_.cloud.debug) {
+          std::cout << "[CloudClient] reject identity track=" << result.track_id
+                    << " name=" << result.identity.name
+                    << " known=" << (result.identity.known ? 1 : 0)
+                    << " conf=" << result.identity.conf_pct
+                    << " min_conf=" << config_.cloud.identity_min_confidence << std::endl;
+        }
+        result.has_identity = false;
+      }
+    }
+
+    if (!result.has_emotion) {
+      continue;
+    }
+    const float gap = emotion_gap(result.emotion);
+    const bool is_sad = result.emotion.label == EmotionLabel::Sad;
+    const float min_confidence = is_sad ? config_.cloud.emotion_sad_min_confidence : config_.cloud.emotion_min_confidence;
+    const float min_gap = is_sad ? config_.cloud.emotion_sad_min_gap : config_.cloud.emotion_min_gap;
+    const bool confident = result.emotion.conf_pct >= min_confidence;
+    const bool separated = gap >= min_gap;
+    if (!confident || !separated) {
+      if (config_.cloud.debug) {
+        std::cout << "[CloudClient] reject emotion track=" << result.track_id
+                  << " label=" << emotionToString(result.emotion.label)
+                  << " conf=" << result.emotion.conf_pct
+                  << " gap=" << gap
+                  << " min_conf=" << min_confidence
+                  << " min_gap=" << min_gap << std::endl;
+      }
+      result.has_emotion = false;
+    }
+  }
+
+  if (config_.cloud.debug) {
+    for (const auto& result : completed) {
+      std::cout << "[CloudClient] completed track=" << result.track_id
+                << " frame=" << result.frame_id
+                << " identity=" << (result.has_identity ? result.identity.name : "-")
+                << " emotion=" << (result.has_emotion ? emotionToString(result.emotion.label) : "-")
+                << " apply_id=" << (config_.cloud.apply_identity ? 1 : 0)
+                << " apply_emo=" << (config_.cloud.apply_emotion ? 1 : 0) << std::endl;
+    }
+  }
+
+  if (!config_.cloud.apply_identity && !config_.cloud.apply_emotion) {
+    return false;
+  }
+
+  track_manager_->applyExternalAnalyses(completed,
+                                        now_ms,
+                                        static_cast<std::uint64_t>(std::max(0, config_.cloud.result_ttl_ms)),
+                                        config_.cloud.apply_identity,
+                                        config_.cloud.apply_emotion);
+  return true;
 }
 
 /**
@@ -698,8 +930,14 @@ void App::handleRecognition() {
       continue;
     }
 
+    applyCloudResults(frame.ts_ms);
+
     // 整帧送入推理管线，返回所有人脸的跟踪/识别/情绪结果
-    const RecognitionResult result = pipeline_->process(frame);
+    RecognitionResult result = pipeline_->process(frame);
+    submitCloudRequests(frame, result.tracks);
+    if (applyCloudResults(frame.ts_ms)) {
+      result.tracks = track_manager_->snapshot();
+    }
     renderer_->drawRecognition(frame.bgr, result.tracks);
 
     const int key = renderer_->waitKey(1);
@@ -726,42 +964,118 @@ void App::handleRecognition() {
  * 列出数据库中所有人员，用户输入编号后确认删除，同时清理本地图片与底库缓存。
  */
 void App::handleDeletePerson() {
-  const auto persons = database_->listPersons();
-  if (persons.empty()) {
-    std::cout << "[Delete] no person in database." << std::endl;
-    return;
-  }
+  std::cout << "[Delete] choose delete scope:" << std::endl;
+  std::cout << "1) Local only" << std::endl;
+  std::cout << "2) Cloud only" << std::endl;
+  std::cout << "3) Local + cloud" << std::endl;
+  std::cout << "0) Cancel" << std::endl;
+  std::cout << "Enter choice: ";
 
-  std::cout << "[Delete] people in database:" << std::endl;
-  for (std::size_t i = 0; i < persons.size(); ++i) {
-    std::cout << (i + 1) << ") " << persons[i] << std::endl;
-  }
-  std::cout << "Enter the number to delete (0 to cancel): ";
-
-  std::string choice_text;
-  std::getline(std::cin, choice_text);
-  choice_text = trim(choice_text);
-  if (choice_text.empty() || choice_text == "0") {
+  std::string scope_text;
+  std::getline(std::cin, scope_text);
+  scope_text = trim(scope_text);
+  if (scope_text.empty() || scope_text == "0") {
     std::cout << "[Delete] cancelled." << std::endl;
     return;
   }
 
-  int choice = 0;
+  int scope = 0;
   try {
-    choice = std::stoi(choice_text);
+    scope = std::stoi(scope_text);
   } catch (...) {
     std::cout << "[Delete] invalid selection." << std::endl;
     return;
   }
-  if (choice < 1 || choice > static_cast<int>(persons.size())) {
+  if (scope < 1 || scope > 3) {
     std::cout << "[Delete] invalid selection." << std::endl;
     return;
   }
 
-  const std::string& name = persons[static_cast<std::size_t>(choice - 1)];
-  const auto image_paths = file_store_->listPersonImages(name);
+  const bool delete_local = (scope == 1 || scope == 3);
+  const bool delete_cloud = (scope == 2 || scope == 3);
+  if (delete_cloud && (!cloud_client_ || !cloud_client_->enabled())) {
+    if (!delete_local) {
+      std::cout << "[Delete] cloud client is not enabled; cloud-only delete cannot continue." << std::endl;
+      return;
+    }
+    std::cout << "[Delete] cloud client is not enabled; local delete can continue, cloud delete will be skipped." << std::endl;
+  }
 
-  std::cout << "[Delete] remove " << name;
+  std::string name;
+  auto chooseNameFromList = [this](const std::vector<std::string>& people, const std::string& title, std::string* out_name) {
+    if (people.empty() || out_name == nullptr) {
+      return -1;
+    }
+
+    std::cout << title << std::endl;
+    for (std::size_t i = 0; i < people.size(); ++i) {
+      std::cout << (i + 1) << ") " << people[i] << std::endl;
+    }
+    std::cout << "Enter the number to delete (0 to cancel): ";
+
+    std::string choice_text;
+    std::getline(std::cin, choice_text);
+    choice_text = trim(choice_text);
+    if (choice_text.empty() || choice_text == "0") {
+      std::cout << "[Delete] cancelled." << std::endl;
+      return 0;
+    }
+
+    int choice = 0;
+    try {
+      choice = std::stoi(choice_text);
+    } catch (...) {
+      std::cout << "[Delete] invalid selection." << std::endl;
+      return 0;
+    }
+    if (choice < 1 || choice > static_cast<int>(people.size())) {
+      std::cout << "[Delete] invalid selection." << std::endl;
+      return 0;
+    }
+
+    *out_name = people[static_cast<std::size_t>(choice - 1)];
+    return 1;
+  };
+
+  if (delete_local) {
+    const auto persons = database_->listPersons();
+    if (persons.empty()) {
+      std::cout << "[Delete] no person in local database." << std::endl;
+      return;
+    }
+
+    const int selected = chooseNameFromList(persons, "[Delete] people in local database:", &name);
+    if (selected != 1) {
+      return;
+    }
+  } else {
+    const auto cloud_people = (cloud_client_ && cloud_client_->enabled()) ? cloud_client_->listPeople() : std::vector<std::string>{};
+    const int selected = chooseNameFromList(cloud_people, "[Delete] people in cloud gallery:", &name);
+    if (selected == 0) {
+      return;
+    }
+    if (selected < 0) {
+      std::cout << "[Delete] cloud gallery list is empty or unavailable; enter cloud person name to delete: ";
+      std::string raw_name;
+      std::getline(std::cin, raw_name);
+      name = file_store_->sanitizeName(trim(raw_name));
+      if (name.empty()) {
+        std::cout << "[Delete] invalid name." << std::endl;
+        return;
+      }
+    }
+  }
+
+  const auto image_paths = delete_local ? file_store_->listPersonImages(name) : std::vector<std::string>{};
+
+  std::cout << "[Delete] remove " << name << " from ";
+  if (delete_local && delete_cloud) {
+    std::cout << "local + cloud";
+  } else if (delete_local) {
+    std::cout << "local";
+  } else {
+    std::cout << "cloud";
+  }
   if (!image_paths.empty()) {
     std::cout << " and " << image_paths.size() << " saved image(s)";
   }
@@ -776,16 +1090,30 @@ void App::handleDeletePerson() {
     return;
   }
 
-  // 先删数据库记录，再删本地文件
-  if (!database_->deletePersonAndEmbeddings(name)) {
-    std::cerr << "[Delete] failed to remove database records for " << name << std::endl;
-    return;
+  if (delete_local) {
+    // 先删数据库记录，再删本地文件
+    if (!database_->deletePersonAndEmbeddings(name)) {
+      std::cerr << "[Delete] failed to remove local database records for " << name << std::endl;
+      return;
+    }
+
+    file_store_->removeFiles(image_paths);
+    file_store_->removePersonDir(name);
+    embedding_store_->reload();
+    std::cout << "[Delete] removed local data for " << name << std::endl;
   }
 
-  file_store_->removeFiles(image_paths);
-  file_store_->removePersonDir(name);
-  embedding_store_->reload();
-  std::cout << "[Delete] removed " << name << std::endl;
+  if (delete_cloud) {
+    if (cloud_client_ && cloud_client_->enabled()) {
+      if (cloud_client_->deletePerson(name)) {
+        std::cout << "[Delete] cloud delete requested for " << name << std::endl;
+      } else {
+        std::cerr << "[Delete] failed to delete cloud data for " << name << std::endl;
+      }
+    } else {
+      std::cerr << "[Delete] cloud client is disabled; cloud data was not changed." << std::endl;
+    }
+  }
 }
 
 /** @brief 去除字符串首尾空白字符（空格、制表、换行等） */

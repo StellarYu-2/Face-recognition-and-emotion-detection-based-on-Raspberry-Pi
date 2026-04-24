@@ -8,11 +8,21 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(ENABLE_VULKAN "Enable Vulkan backend for ncnn if available." OFF)
 option(REQUIRE_NCNN "Require ncnn for detector/recognizer/emotion inference." ON)
 option(ENABLE_RPI4_CPU_TUNE "Tune generated code for Raspberry Pi 4 Cortex-A72." ON)
+option(ENABLE_CLOUD_CLIENT "Enable the hybrid cloud HTTP client when libcurl is available." ON)
 
 find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui videoio objdetect calib3d)
 find_package(SQLite3 REQUIRED)
 find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
+if(ENABLE_CLOUD_CLIENT)
+  find_package(CURL QUIET)
+  if(CURL_FOUND)
+    add_compile_definitions(USE_CLOUD_CLIENT=1)
+    message(STATUS "libcurl found: cloud client enabled")
+  else()
+    message(WARNING "libcurl was not found: cloud client will build as a no-op fallback")
+  endif()
+endif()
 
 pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0)
 pkg_check_modules(LIBCAMERA QUIET libcamera)
@@ -39,6 +49,7 @@ add_executable(asdun_access
   src/core/App.cpp
   src/core/StateMachine.cpp
   src/camera/CameraManager.cpp
+  src/cloud/CloudClient.cpp
   src/engine/ConfidenceMapper.cpp
   src/engine/FaceDetector.cpp
   src/engine/FaceLandmarkEstimator.cpp
@@ -69,6 +80,10 @@ target_link_libraries(asdun_access
     ${GSTREAMER_LIBRARIES}
     ${LIBCAMERA_LIBRARIES}
 )
+
+if(ENABLE_CLOUD_CLIENT AND CURL_FOUND)
+  target_link_libraries(asdun_access PRIVATE CURL::libcurl)
+endif()
 
 if(ncnn_FOUND)
   if(TARGET ncnn)

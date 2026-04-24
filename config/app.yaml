@@ -12,8 +12,8 @@ enroll_target_images: 8
 detect_interval: 8
 recognition_interval: 24
 emotion_interval: 24
-max_inference_faces: 1
-max_emotion_faces: 1
+max_inference_faces: 2
+max_emotion_faces: 0
 recognition_crop_scale: 1.06
 recognition_min_face_size: 80
 recognition_blur_threshold: 35.0
@@ -30,6 +30,38 @@ emotion_non_calm_floor: 0.22
 emotion_handoff_margin: 0.08
 debug_recognition: false
 debug_emotion: false
+
+# Hybrid cloud inference
+# Stage C sends confirmed face crops to the Windows GPU server and applies cloud identity/emotion.
+# Cloud Unknown is ignored by default, so an empty cloud gallery will not clear local identity.
+# Preferred setup:
+# - Raspberry Pi hostname / Tailscale name: asdun
+# - Windows GPU Tailscale name: asdun-cloud
+# Keep the service URL on a stable device name instead of a phone-hotspot IP.
+inference_mode: "hybrid"   # local / hybrid / cloud
+cloud_server_url: "http://asdun-cloud:8000"
+cloud_server_urls:
+  - "http://asdun-cloud:8000"
+  # Fallback to the Windows Tailscale IP if MagicDNS/device-name lookup is unstable.
+  - "http://100.120.250.49:8000"
+cloud_health_check_path: "/health"
+cloud_timeout_ms: 2000
+cloud_connect_timeout_ms: 1000
+cloud_min_interval_ms: 700
+cloud_max_queue_size: 2
+cloud_jpeg_quality: 85
+cloud_crop_size: 384
+cloud_crop_scale: 1.70
+cloud_result_ttl_ms: 1200
+cloud_identity_min_confidence: 68.0
+cloud_identity_apply_unknown: false
+cloud_emotion_min_confidence: 58.0
+cloud_emotion_min_gap: 0.14
+cloud_emotion_sad_min_confidence: 35.0
+cloud_emotion_sad_min_gap: 0.05
+cloud_apply_identity: true
+cloud_apply_emotion: true
+cloud_debug: true
 
 # Enrollment quality gate
 min_face_area_ratio: 0.08

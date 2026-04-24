@@ -6,6 +6,7 @@
 #include <opencv2/core.hpp>
 
 #include "camera/CameraManager.hpp"
+#include "cloud/CloudClient.hpp"
 #include "core/StateMachine.hpp"
 #include "engine/EmotionRecognizer.hpp"
 #include "engine/FaceAligner.hpp"
@@ -96,6 +97,9 @@ struct AppConfig {
   int emotion_input_size{64};
   std::string emotion_input_blob{"input"};
   std::string emotion_output_blob{"output"};
+
+  std::string inference_mode{"local"};
+  CloudClientConfig cloud{};
 };
 
 class App {
@@ -110,6 +114,9 @@ class App {
   void handleEnrollment();
   void handleRecognition();
   void handleDeletePerson();
+  void submitCloudRequests(const FramePacket& frame, const std::vector<TrackState>& tracks);
+  bool applyCloudResults(std::uint64_t now_ms);
+  static cv::Rect expandRect(const cv::Rect& rect, const cv::Size& image_size, float scale);
   static std::string trim(const std::string& s);
 
   std::string config_path_;
@@ -128,6 +135,7 @@ class App {
   std::unique_ptr<TrackManager> track_manager_;
   std::unique_ptr<FaceQualityGate> quality_gate_;
   std::unique_ptr<InferencePipeline> pipeline_;
+  std::unique_ptr<CloudClient> cloud_client_;
   std::unique_ptr<Renderer> renderer_;
 };
 

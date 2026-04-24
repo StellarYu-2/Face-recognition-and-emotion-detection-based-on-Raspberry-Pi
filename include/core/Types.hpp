@@ -141,6 +141,22 @@ struct TrackState {
 };
 
 /**
+ * @brief 外部分析结果
+ * 用于承接云端或其他异步推理源返回的身份/情绪结果。Tracking 层只关心
+ * “某个 track 的新分析结果”，不需要知道 HTTP、云端模型等实现细节。
+ */
+struct ExternalTrackAnalysis {
+  int track_id{-1};                /**< 目标跟踪 ID */
+  std::uint64_t frame_id{0};       /**< 结果对应的源帧 */
+  std::uint64_t ts_ms{0};          /**< 结果对应的源时间戳 */
+  bool has_identity{false};        /**< 是否携带身份结果 */
+  bool has_emotion{false};         /**< 是否携带情绪结果 */
+  IdentityResult identity{};       /**< 外部身份结果 */
+  EmotionResult emotion{};         /**< 外部情绪结果 */
+  std::string source{"external"};  /**< 结果来源，便于调试 */
+};
+
+/**
  * @brief 整帧识别结果
  * 汇总一帧图像中所有被跟踪人脸的状态。
  */
