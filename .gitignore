@@ -15,6 +15,7 @@
 /Testing/
 /CTestTestfile.cmake
 /compile_commands.json
+/.codex_cmake_check/
 
 # =========================
 # C / C++ Compiled Outputs
@@ -60,6 +61,8 @@
 /models/*.ckpt
 /models/*.engine
 /models/*.weights
+/models/*.zip
+/models/buffalo_l/
 
 # =========================
 # IDE / Editor
@@ -92,4 +95,3 @@ __pycache__/
 .env
 .env.*
 *.local
-

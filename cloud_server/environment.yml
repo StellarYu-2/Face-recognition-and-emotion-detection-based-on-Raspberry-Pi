@@ -1,0 +1,14 @@
+name: asdun-cloud
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - numpy>=1.26
+  - opencv>=4.9
+  - pyyaml>=6.0
+  - pip:
+      - fastapi>=0.115
+      - uvicorn[standard]>=0.30
+      - python-multipart>=0.0.9
+      - onnxruntime-gpu>=1.18

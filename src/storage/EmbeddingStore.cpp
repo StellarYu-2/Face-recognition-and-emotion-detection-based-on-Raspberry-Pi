@@ -6,11 +6,21 @@
 #include <limits>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "engine/ConfidenceMapper.hpp"
 #include "engine/FaceRecognizer.hpp"
 
 namespace asdun {
+
+namespace {
+
+constexpr std::size_t kMinTemplateCandidates = 3;
+constexpr std::size_t kMaxTemplateCandidates = 5;
+constexpr float kTemplateDistanceBand = 0.10F;
+constexpr float kTemplateThresholdSlack = 0.05F;
+
+}  // namespace
 
 EmbeddingStore::EmbeddingStore(Database& db) : db_(db) {}
 
@@ -43,9 +53,48 @@ IdentityResult EmbeddingStore::match(const std::vector<float>& query_embedding,
   struct RankedDistance {
     std::string person_name;
     float distance{std::numeric_limits<float>::max()};
+    float template_distance{std::numeric_limits<float>::max()};
     int sample_count{0};
   };
-  std::unordered_map<std::string, RankedDistance> best_by_person;
+
+  std::unordered_map<std::string, float> template_distance_by_person;
+
+  std::unordered_set<std::string> candidate_persons;
+  std::vector<RankedDistance> coarse_ranked;
+  coarse_ranked.reserve(templates_.size());
+  for (const auto& item : templates_) {
+    if (!active_model_tag_.empty() && item.model_tag != active_model_tag_) {
+      continue;
+    }
+    if (item.mean_embedding.empty()) {
+      continue;
+    }
+    coarse_ranked.push_back(RankedDistance{
+        item.person_name,
+        FaceRecognizer::l2Distance(query_embedding, item.mean_embedding),
+        FaceRecognizer::l2Distance(query_embedding, item.mean_embedding),
+        item.sample_count});
+    template_distance_by_person[item.person_name] = coarse_ranked.back().distance;
+  }
+  std::sort(coarse_ranked.begin(), coarse_ranked.end(), [](const RankedDistance& a, const RankedDistance& b) {
+    return a.distance < b.distance;
+  });
+
+  if (!coarse_ranked.empty()) {
+    const float coarse_best = coarse_ranked.front().distance;
+    const float coarse_limit = std::min(threshold + kTemplateThresholdSlack, coarse_best + kTemplateDistanceBand);
+    const std::size_t coarse_keep = std::min<std::size_t>(kMaxTemplateCandidates, coarse_ranked.size());
+    for (std::size_t i = 0; i < coarse_ranked.size(); ++i) {
+      if (i < std::min<std::size_t>(kMinTemplateCandidates, coarse_keep) || i < coarse_keep ||
+          coarse_ranked[i].distance <= coarse_limit) {
+        candidate_persons.insert(coarse_ranked[i].person_name);
+      } else {
+        break;
+      }
+    }
+  }
+
+  std::unordered_map<std::string, std::vector<float>> distances_by_person;
   for (const auto& item : gallery_) {
     if (!active_model_tag_.empty() && item.model_tag != active_model_tag_) {
       continue;
@@ -53,22 +102,37 @@ IdentityResult EmbeddingStore::match(const std::vector<float>& query_embedding,
     if (item.embedding.empty()) {
       continue;
     }
+    if (!candidate_persons.empty() && candidate_persons.find(item.person_name) == candidate_persons.end()) {
+      continue;
+    }
 
     const float d = FaceRecognizer::l2Distance(query_embedding, item.embedding);
-    auto [it, inserted] =
-        best_by_person.emplace(item.person_name, RankedDistance{item.person_name, d, 1});
-    if (!inserted) {
-      it->second.sample_count += 1;
-      if (d < it->second.distance) {
-        it->second.distance = d;
-      }
-    }
+    distances_by_person[item.person_name].push_back(d);
   }
 
   std::vector<RankedDistance> ranked;
-  ranked.reserve(best_by_person.size());
-  for (const auto& [_, item] : best_by_person) {
-    ranked.push_back(item);
+  ranked.reserve(distances_by_person.size());
+  for (auto& [person_name, distances] : distances_by_person) {
+    if (distances.empty()) {
+      continue;
+    }
+    std::sort(distances.begin(), distances.end());
+    const float best_distance = distances.front();
+    const std::size_t top_k = std::min<std::size_t>(2, distances.size());
+    float topk_sum = 0.0F;
+    for (std::size_t i = 0; i < top_k; ++i) {
+      topk_sum += distances[i];
+    }
+    const float topk_mean = topk_sum / static_cast<float>(top_k);
+    const auto tpl_it = template_distance_by_person.find(person_name);
+    const float template_distance =
+        (tpl_it != template_distance_by_person.end()) ? tpl_it->second : best_distance;
+    const float fused_distance = 0.55F * best_distance + 0.25F * topk_mean + 0.20F * template_distance;
+    ranked.push_back(RankedDistance{
+        person_name,
+        fused_distance,
+        template_distance,
+        static_cast<int>(distances.size())});
   }
   std::sort(ranked.begin(), ranked.end(), [](const RankedDistance& a, const RankedDistance& b) {
     return a.distance < b.distance;
@@ -107,7 +171,9 @@ IdentityResult EmbeddingStore::match(const std::vector<float>& query_embedding,
   oss << std::fixed;
   oss << "decision=" << decision << " shown=" << result.name << " model="
       << (active_model_tag_.empty() ? "any" : active_model_tag_) << " top1=" << ranked.front().person_name
-      << " sim=" << std::setprecision(1) << known_conf << " dist=" << std::setprecision(3) << ranked.front().distance;
+      << " sim=" << std::setprecision(1) << known_conf << " dist=" << std::setprecision(3) << ranked.front().distance
+      << " tpl=" << ranked.front().template_distance << " coarse=" << (candidate_persons.empty() ? "off" : "template")
+      << " coarse_n=" << candidate_persons.size();
   if (ranked.size() > 1) {
     oss << " top2=" << ranked[1].person_name << " dist2=" << ranked[1].distance << " gap=" << margin;
   } else {

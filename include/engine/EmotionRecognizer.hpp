@@ -26,6 +26,7 @@ class EmotionRecognizer {
 
  private:
   static cv::Mat normalizeFace(const cv::Mat& face_bgr);
+  EmotionResult inferWithHeuristics(const cv::Mat& face_bgr) const;
   EmotionResult inferWithNcnn(const cv::Mat& face_bgr) const;
   bool detectSmile(const cv::Mat& normalized_gray, float* smile_strength) const;
 

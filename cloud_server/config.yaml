@@ -1,0 +1,51 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+runtime:
+  preferred_provider: "CUDAExecutionProvider"
+  fallback_provider: "CPUExecutionProvider"
+
+stage_a:
+  fake_analyze: false
+
+emotion:
+  enabled: true
+  model_path: "./models/emotion-ferplus-8.onnx"
+  input_size: 64
+  input_layout: "nchw_gray"
+  non_calm_floor: 0.22
+  handoff_margin: 0.08
+  sad_floor: 0.16
+  sad_handoff_margin: 0.22
+  sad_vs_other_margin: 0.03
+
+identity:
+  enabled: true
+  backend: "insightface"   # insightface / arcface_crop
+  insightface_root: "."
+  insightface_model_name: "buffalo_l"
+  insightface_det_width: 640
+  insightface_det_height: 640
+  insightface_det_score: 0.45
+  model_path: "./models/arcfaceresnet100-8.onnx"
+  input_size: 112
+  input_layout: "nchw_rgb"
+  mean: 127.5
+  norm: 0.0078125
+  match_threshold: 0.78
+  margin_threshold: 0.14
+  score_top_k: 3
+  template_count: 4
+  score_topk_weight: 0.55
+  score_centroid_weight: 0.30
+  score_template_weight: 0.15
+  enroll_min_samples: 3
+  enroll_max_intra_distance: 0.42
+  enroll_outlier_mad_scale: 3.5
+  enroll_cross_person_margin: 0.03
+  enroll_cross_person_min_distance: 0.16
+
+gallery:
+  store_path: "./data/cloud_gallery_insightface.npz"
+  images_root: "./data/gallery"

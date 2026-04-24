@@ -2,26 +2,66 @@
 # - "0" for /dev/video0
 # - "gst:<pipeline>" for GStreamer pipeline
 camera_source: "0"
-frame_width: 640
-frame_height: 480
+frame_width: 424
+frame_height: 240
 frame_fps: 30
+opencv_num_threads: 1
 enroll_target_images: 8
 
 # Pipeline schedule
-detect_interval: 2
-recognition_interval: 4
-emotion_interval: 20
-max_inference_faces: 1
+detect_interval: 8
+recognition_interval: 24
+emotion_interval: 24
+max_inference_faces: 2
+max_emotion_faces: 0
 recognition_crop_scale: 1.06
-recognition_min_face_size: 96
+recognition_min_face_size: 80
 recognition_blur_threshold: 35.0
 recognition_margin_threshold: 0.11
-emotion_crop_scale: 1.14
-emotion_min_face_size: 96
+known_identity_cooldown_ms: 1200
+unknown_identity_cooldown_ms: 260
+recognition_retrigger_blur_gain: 18.0
+recognition_retrigger_size_gain: 20
+emotion_crop_scale: 1.28
+emotion_min_face_size: 80
+emotion_cooldown_ms: 600
+emotion_require_known_identity: false
 emotion_non_calm_floor: 0.22
 emotion_handoff_margin: 0.08
 debug_recognition: false
 debug_emotion: false
+
+# Hybrid cloud inference
+# Stage C sends confirmed face crops to the Windows GPU server and applies cloud identity/emotion.
+# Cloud Unknown is ignored by default, so an empty cloud gallery will not clear local identity.
+# Preferred setup:
+# - Raspberry Pi hostname / Tailscale name: asdun
+# - Windows GPU Tailscale name: asdun-cloud
+# Keep the service URL on a stable device name instead of a phone-hotspot IP.
+inference_mode: "hybrid"   # local / hybrid / cloud
+cloud_server_url: "http://asdun-cloud:8000"
+cloud_server_urls:
+  - "http://asdun-cloud:8000"
+  # Fallback to the Windows Tailscale IP if MagicDNS/device-name lookup is unstable.
+  - "http://100.120.250.49:8000"
+cloud_health_check_path: "/health"
+cloud_timeout_ms: 2000
+cloud_connect_timeout_ms: 1000
+cloud_min_interval_ms: 700
+cloud_max_queue_size: 2
+cloud_jpeg_quality: 85
+cloud_crop_size: 384
+cloud_crop_scale: 1.70
+cloud_result_ttl_ms: 1200
+cloud_identity_min_confidence: 68.0
+cloud_identity_apply_unknown: false
+cloud_emotion_min_confidence: 58.0
+cloud_emotion_min_gap: 0.14
+cloud_emotion_sad_min_confidence: 35.0
+cloud_emotion_sad_min_gap: 0.05
+cloud_apply_identity: true
+cloud_apply_emotion: true
+cloud_debug: true
 
 # Enrollment quality gate
 min_face_area_ratio: 0.08
@@ -33,7 +73,7 @@ match_threshold: 1.10
 sigmoid_tau: 0.10
 
 # Tracking
-track_ttl: 10
+track_ttl: 18
 track_iou_threshold: 0.20
 
 # Storage
@@ -43,7 +83,8 @@ images_root: "./data/images"
 # Haar cascade path on Raspberry Pi Debian
 face_cascade_path: "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
 
-# NCNN detector (current converted UltraFace model)
+# NCNN detector
+# Fast path: UltraFace/RFB 320x240. Much lighter than SCRFD 640x640, but no keypoints.
 detector_param_path: "./models/onnx_to_ncnn/face_detector.param"
 detector_bin_path: "./models/onnx_to_ncnn/face_detector.bin"
 detector_input_width: 320
@@ -62,6 +103,21 @@ recognizer_input_size: 112
 recognizer_color_order: "bgr"
 recognizer_input_blob: "data"
 recognizer_output_blob: "fc1"
+
+# Optional standalone NCNN 5-point face landmark model for alignment.
+# When detector already outputs 5 keypoints (for example SCRFD BNKPS), this can stay missing.
+landmark_param_path: "./models/onnx_to_ncnn/face_landmark_5.param"
+landmark_bin_path: "./models/onnx_to_ncnn/face_landmark_5.bin"
+landmark_input_width: 112
+landmark_input_height: 112
+landmark_crop_scale: 1.45
+landmark_coord_mode: "zero_one"
+landmark_color_order: "rgb"
+landmark_mean: 127.5
+landmark_norm: 0.0078125
+landmark_input_blob: "input"
+landmark_output_blob: "output"
+aligned_face_size: 112
 
 # NCNN emotion classifier (current converted FER+ model)
 # Current class order:

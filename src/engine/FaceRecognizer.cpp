@@ -11,6 +11,8 @@ namespace asdun {
 
 namespace {
 
+constexpr float kMirrorBlend = 0.35F;
+
 cv::Mat rotateFace(const cv::Mat& face_bgr, double angle_deg) {
   const cv::Point2f center(static_cast<float>(face_bgr.cols) * 0.5F, static_cast<float>(face_bgr.rows) * 0.5F);
   const cv::Mat rot = cv::getRotationMatrix2D(center, angle_deg, 1.0);
@@ -90,6 +92,7 @@ bool FaceRecognizer::init(const std::string& model_param_path,
     net_.clear();
     net_.opt.use_vulkan_compute = false;
     net_.opt.lightmode = true;
+    net_.opt.use_packing_layout = true;
     net_.opt.num_threads = 4;
     if (net_.load_param(model_param_path_.c_str()) == 0 && net_.load_model(model_bin_path_.c_str()) == 0) {
       ncnn_ready_ = true;
@@ -107,31 +110,16 @@ std::vector<float> FaceRecognizer::extractEmbedding(const cv::Mat& face_bgr) con
 
 #ifdef USE_NCNN
   if (ncnn_ready_) {
-    const cv::Mat square = squarePad(face_bgr);
-    ncnn::Mat in = ncnn::Mat::from_pixels_resize(square.data,
-                                                 use_rgb_input_ ? ncnn::Mat::PIXEL_BGR2RGB : ncnn::Mat::PIXEL_BGR,
-                                                 square.cols,
-                                                 square.rows,
-                                                 input_size_,
-                                                 input_size_);
-
-    ncnn::Extractor ex = net_.create_extractor();
-    ex.set_light_mode(true);
-    ex.input(input_blob_name_.c_str(), in);
-
-    ncnn::Mat out{};
-    int rc = ex.extract(output_blob_name_.c_str(), out);
-    if (rc != 0) {
-      rc = ex.extract(0, out);
-    }
-    if (rc == 0) {
-      const int total = matElementCount(out);
-      if (total > 0) {
-        const float* ptr = static_cast<const float*>(out.data);
-        std::vector<float> embedding(ptr, ptr + total);
+    auto embedding = extractEmbeddingSingle(face_bgr);
+    if (!embedding.empty()) {
+      const auto mirrored = extractEmbeddingSingle(mirrorFace(face_bgr));
+      if (!mirrored.empty() && mirrored.size() == embedding.size()) {
+        for (std::size_t i = 0; i < embedding.size(); ++i) {
+          embedding[i] = (1.0F - kMirrorBlend) * embedding[i] + kMirrorBlend * mirrored[i];
+        }
         l2Normalize(embedding);
-        return embedding;
       }
+      return embedding;
     }
   }
 #endif
@@ -167,6 +155,48 @@ std::vector<float> FaceRecognizer::extractEmbedding(const cv::Mat& face_bgr) con
   return embedding;
 }
 
+std::vector<float> FaceRecognizer::extractEmbeddingSingle(const cv::Mat& face_bgr) const {
+#ifdef USE_NCNN
+  if (!ncnn_ready_ || face_bgr.empty()) {
+    return {};
+  }
+
+  const cv::Mat square = squarePad(face_bgr);
+  ncnn::Mat in = ncnn::Mat::from_pixels_resize(square.data,
+                                               use_rgb_input_ ? ncnn::Mat::PIXEL_BGR2RGB : ncnn::Mat::PIXEL_BGR,
+                                               square.cols,
+                                               square.rows,
+                                               input_size_,
+                                               input_size_);
+
+  ncnn::Extractor ex = net_.create_extractor();
+  ex.set_light_mode(true);
+  ex.input(input_blob_name_.c_str(), in);
+
+  ncnn::Mat out{};
+  int rc = ex.extract(output_blob_name_.c_str(), out);
+  if (rc != 0) {
+    rc = ex.extract(0, out);
+  }
+  if (rc != 0) {
+    return {};
+  }
+
+  const int total = matElementCount(out);
+  if (total <= 0) {
+    return {};
+  }
+
+  const float* ptr = static_cast<const float*>(out.data);
+  std::vector<float> embedding(ptr, ptr + total);
+  l2Normalize(embedding);
+  return embedding;
+#else
+  (void)face_bgr;
+  return {};
+#endif
+}
+
 float FaceRecognizer::l2Distance(const std::vector<float>& a, const std::vector<float>& b) {
   if (a.empty() || b.empty() || a.size() != b.size()) {
     return std::numeric_limits<float>::max();
@@ -186,6 +216,12 @@ cv::Mat FaceRecognizer::squarePad(const cv::Mat& face_bgr) {
   const int y = (size - face_bgr.rows) / 2;
   face_bgr.copyTo(square(cv::Rect(x, y, face_bgr.cols, face_bgr.rows)));
   return square;
+}
+
+cv::Mat FaceRecognizer::mirrorFace(const cv::Mat& face_bgr) {
+  cv::Mat mirrored{};
+  cv::flip(face_bgr, mirrored, 1);
+  return mirrored;
 }
 
 void FaceRecognizer::l2Normalize(std::vector<float>& v) {

@@ -27,7 +27,9 @@ class FaceRecognizer {
   static float l2Distance(const std::vector<float>& a, const std::vector<float>& b);
 
  private:
+  std::vector<float> extractEmbeddingSingle(const cv::Mat& face_bgr) const;
   static cv::Mat squarePad(const cv::Mat& face_bgr);
+  static cv::Mat mirrorFace(const cv::Mat& face_bgr);
   static void l2Normalize(std::vector<float>& v);
 
   bool ncnn_ready_{false};

@@ -2,7 +2,9 @@
 
 #include "core/Types.hpp"
 #include "engine/EmotionRecognizer.hpp"
+#include "engine/FaceAligner.hpp"
 #include "engine/FaceDetector.hpp"
+#include "engine/FaceLandmarkEstimator.hpp"
 #include "engine/FaceRecognizer.hpp"
 #include "storage/EmbeddingStore.hpp"
 #include "tracking/TrackManager.hpp"
@@ -12,6 +14,8 @@ namespace asdun {
 class InferencePipeline {
  public:
   InferencePipeline(FaceDetector& detector,
+                    FaceLandmarkEstimator& landmark_estimator,
+                    FaceAligner& face_aligner,
                     FaceRecognizer& recognizer,
                     EmotionRecognizer& emotion_recognizer,
                     EmbeddingStore& embedding_store,
@@ -20,12 +24,19 @@ class InferencePipeline {
                     int recognition_interval,
                     int emotion_interval,
                     int max_inference_faces,
+                    int max_emotion_faces,
                     float recognition_crop_scale,
                     int recognition_min_face_size,
                     float recognition_blur_threshold,
                     float recognition_margin_threshold,
+                    int known_identity_cooldown_ms,
+                    int unknown_identity_cooldown_ms,
+                    float recognition_retrigger_blur_gain,
+                    int recognition_retrigger_size_gain,
                     float emotion_crop_scale,
                     int emotion_min_face_size,
+                    int emotion_cooldown_ms,
+                    bool emotion_require_known_identity,
                     bool debug_recognition,
                     bool debug_emotion,
                     float match_threshold,
@@ -37,6 +48,8 @@ class InferencePipeline {
   static cv::Rect expandRect(const cv::Rect& rect, int image_width, int image_height, float scale);
 
   FaceDetector& detector_;
+  FaceLandmarkEstimator& landmark_estimator_;
+  FaceAligner& face_aligner_;
   FaceRecognizer& recognizer_;
   EmotionRecognizer& emotion_recognizer_;
   EmbeddingStore& embedding_store_;
@@ -46,12 +59,19 @@ class InferencePipeline {
   int recognition_interval_{20};
   int emotion_interval_{15};
   int max_inference_faces_{1};
+  int max_emotion_faces_{1};
   float recognition_crop_scale_{1.15F};
   int recognition_min_face_size_{96};
   float recognition_blur_threshold_{35.0F};
   float recognition_margin_threshold_{0.05F};
+  int known_identity_cooldown_ms_{900};
+  int unknown_identity_cooldown_ms_{250};
+  float recognition_retrigger_blur_gain_{18.0F};
+  int recognition_retrigger_size_gain_{20};
   float emotion_crop_scale_{1.14F};
   int emotion_min_face_size_{96};
+  int emotion_cooldown_ms_{600};
+  bool emotion_require_known_identity_{true};
   bool debug_recognition_{false};
   bool debug_emotion_{false};
   float match_threshold_{0.8F};

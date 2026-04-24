@@ -6,9 +6,12 @@
 #include <opencv2/core.hpp>
 
 #include "camera/CameraManager.hpp"
+#include "cloud/CloudClient.hpp"
 #include "core/StateMachine.hpp"
 #include "engine/EmotionRecognizer.hpp"
+#include "engine/FaceAligner.hpp"
 #include "engine/FaceDetector.hpp"
+#include "engine/FaceLandmarkEstimator.hpp"
 #include "engine/FaceRecognizer.hpp"
 #include "engine/InferencePipeline.hpp"
 #include "quality/FaceQualityGate.hpp"
@@ -22,23 +25,31 @@ namespace asdun {
 
 struct AppConfig {
   std::string camera_source{"0"};
-  int frame_width{480};
-  int frame_height{360};
+  int frame_width{424};
+  int frame_height{240};
   int frame_fps{30};
+  int opencv_num_threads{4};
   int enroll_target_images{8};
-  int detect_interval{5};
-  int recognition_interval{20};
-  int emotion_interval{15};
-  int max_inference_faces{1};
+  int detect_interval{4};
+  int recognition_interval{8};
+  int emotion_interval{24};
+  int max_inference_faces{2};
+  int max_emotion_faces{2};
   float recognition_crop_scale{1.15F};
   int recognition_min_face_size{96};
   float recognition_blur_threshold{35.0F};
   float recognition_margin_threshold{0.05F};
+  int known_identity_cooldown_ms{1200};
+  int unknown_identity_cooldown_ms{250};
+  float recognition_retrigger_blur_gain{18.0F};
+  int recognition_retrigger_size_gain{20};
   float emotion_crop_scale{1.14F};
   int emotion_min_face_size{96};
+  int emotion_cooldown_ms{650};
+  bool emotion_require_known_identity{true};
   float emotion_non_calm_floor{0.22F};
   float emotion_handoff_margin{0.08F};
-  bool debug_recognition{true};
+  bool debug_recognition{false};
   bool debug_emotion{false};
   float min_face_area_ratio{0.08F};
   float blur_threshold{100.0F};
@@ -51,12 +62,12 @@ struct AppConfig {
   std::string images_root{"./data/images"};
   std::string face_cascade_path{"/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"};
 
-  std::string detector_param_path{"./models/face_detector.param"};
-  std::string detector_bin_path{"./models/face_detector.bin"};
-  int detector_input_width{320};
-  int detector_input_height{240};
-  float detector_score_threshold{0.7F};
-  float detector_nms_threshold{0.3F};
+  std::string detector_param_path{"./models/onnx_to_ncnn/scrfd_500m_bnkps_shape640x640.param"};
+  std::string detector_bin_path{"./models/onnx_to_ncnn/scrfd_500m_bnkps_shape640x640.bin"};
+  int detector_input_width{640};
+  int detector_input_height{640};
+  float detector_score_threshold{0.58F};
+  float detector_nms_threshold{0.40F};
   bool detector_enable_cascade_fallback{false};
   std::string detector_input_blob{"input"};
   std::string detector_score_blob{"scores"};
@@ -68,12 +79,27 @@ struct AppConfig {
   std::string recognizer_color_order{"bgr"};
   std::string recognizer_input_blob{"data"};
   std::string recognizer_output_blob{"fc1"};
+  std::string landmark_param_path{"./models/onnx_to_ncnn/face_landmark_5.param"};
+  std::string landmark_bin_path{"./models/onnx_to_ncnn/face_landmark_5.bin"};
+  int landmark_input_width{112};
+  int landmark_input_height{112};
+  float landmark_crop_scale{1.45F};
+  std::string landmark_coord_mode{"zero_one"};
+  std::string landmark_color_order{"rgb"};
+  float landmark_mean{127.5F};
+  float landmark_norm{1.0F / 128.0F};
+  std::string landmark_input_blob{"input"};
+  std::string landmark_output_blob{"output"};
+  int aligned_face_size{112};
 
   std::string emotion_param_path{"./models/emotion.param"};
   std::string emotion_bin_path{"./models/emotion.bin"};
   int emotion_input_size{64};
   std::string emotion_input_blob{"input"};
   std::string emotion_output_blob{"output"};
+
+  std::string inference_mode{"local"};
+  CloudClientConfig cloud{};
 };
 
 class App {
@@ -88,6 +114,9 @@ class App {
   void handleEnrollment();
   void handleRecognition();
   void handleDeletePerson();
+  void submitCloudRequests(const FramePacket& frame, const std::vector<TrackState>& tracks);
+  bool applyCloudResults(std::uint64_t now_ms);
+  static cv::Rect expandRect(const cv::Rect& rect, const cv::Size& image_size, float scale);
   static std::string trim(const std::string& s);
 
   std::string config_path_;
@@ -99,11 +128,14 @@ class App {
   std::unique_ptr<FileStore> file_store_;
   std::unique_ptr<EmbeddingStore> embedding_store_;
   std::unique_ptr<FaceDetector> detector_;
+  FaceLandmarkEstimator landmark_estimator_{};
+  FaceAligner face_aligner_{};
   FaceRecognizer recognizer_{};
   EmotionRecognizer emotion_recognizer_{};
   std::unique_ptr<TrackManager> track_manager_;
   std::unique_ptr<FaceQualityGate> quality_gate_;
   std::unique_ptr<InferencePipeline> pipeline_;
+  std::unique_ptr<CloudClient> cloud_client_;
   std::unique_ptr<Renderer> renderer_;
 };
 
