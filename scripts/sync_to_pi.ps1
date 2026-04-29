@@ -1,6 +1,6 @@
 param(
     [string]$PiHost = "asdun",
-    [string]$PiUser = "pi",
+    [string]$PiUser = "asdun",
     [string]$RemoteDir = "~/asdun_pi",
     [switch]$DryRun
 )
@@ -22,6 +22,8 @@ $items = @(
     "src",
     "models/README.md",
     "models/onnx_to_ncnn",
+    "scripts/check_camera_fps.sh",
+    "scripts/check_camera_modes.sh",
     "scripts/install_ncnn_rpi.sh",
     "scripts/rpi_performance_mode.sh",
     "scripts/run_rpi_turbo.sh"

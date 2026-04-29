@@ -4,6 +4,8 @@
 /build/
 /build_rpi/
 /cmake-build-*/
+/out/
+/-p/
 /CMakeFiles/
 /CMakeCache.txt
 /cmake_install.cmake
@@ -42,6 +44,9 @@
 /data/images/
 /data/db/
 /data/logs/
+/backups/
+/cloud_server/data/
+/platform_server/data/
 
 # Optional placeholder files if you use them
 !/data/.gitkeep
@@ -51,18 +56,34 @@
 
 # =========================
 # Model Weights / Large Files
+# Keep converted NCNN files under models/onnx_to_ncnn trackable.
 # =========================
 /models/*.bin
 /models/*.param
-/models/*.onnx
-/models/*.tflite
-/models/*.pt
-/models/*.pth
-/models/*.ckpt
-/models/*.engine
-/models/*.weights
-/models/*.zip
+/models/**/*.onnx
+/models/**/*.tflite
+/models/**/*.pt
+/models/**/*.pth
+/models/**/*.ckpt
+/models/**/*.engine
+/models/**/*.weights
+/models/**/*.zip
 /models/buffalo_l/
+/models/_build/
+
+# =========================
+# Python / Virtual Environments
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+.python-version
+.venv/
+venv/
+env/
+/cloud_server/.venv/
+/platform_server/.venv/
+/platform_server/.pydeps/
 
 # =========================
 # IDE / Editor
@@ -75,6 +96,12 @@
 *~
 
 # =========================
+# Local Tooling / Agent State
+# =========================
+/.claude/
+/.codex*/
+
+# =========================
 # OS / Misc
 # =========================
 .DS_Store
@@ -82,12 +109,6 @@ Thumbs.db
 desktop.ini
 *.log
 *.tmp
-
-# =========================
-# Python Cache (for helper scripts)
-# =========================
-__pycache__/
-*.pyc
 
 # =========================
 # Environment files

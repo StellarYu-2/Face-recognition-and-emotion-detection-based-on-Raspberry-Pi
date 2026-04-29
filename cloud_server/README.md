@@ -157,6 +157,27 @@ If `emotion.provider` stays `CPUExecutionProvider` while `CUDAExecutionProvider`
 The server calls `onnxruntime.preload_dlls()` during startup, so CUDA/cuDNN runtime packages installed in the Python
 environment can be discovered without editing the global Windows PATH.
 
+## Platform Recognition Events
+
+When `platform.enabled` and `platform.recognition_events_enabled` are true in `cloud_server/config.yaml`, every
+successful `/analyze` response is queued and posted to the Platform Server:
+
+```text
+POST /api/events/recognition
+```
+
+The default event source device is `pi-01`, configured by:
+
+```yaml
+platform:
+  recognition_source_device: "pi-01"
+  recognition_report_unknown: false
+```
+
+After restarting the cloud server, real identity/emotion results should appear in the Platform dashboard's
+Recognition table without manually posting test data from PowerShell.
+Unknown identity results are skipped by default so the table stays focused on confirmed people.
+
 ## Tuning Notes
 
 Cloud identity matching scores each person by the mean of the nearest `identity.score_top_k` samples instead of one

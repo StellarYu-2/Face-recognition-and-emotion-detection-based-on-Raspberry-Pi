@@ -65,10 +65,26 @@ class GalleryConfig:
 
 
 @dataclass(frozen=True)
+class PlatformConfig:
+    enabled: bool
+    base_url: str
+    device_id: str
+    role: str
+    display_name: str
+    status_interval_ms: int
+    timeout_ms: int
+    recognition_events_enabled: bool
+    recognition_source_device: str
+    recognition_queue_size: int
+    recognition_report_unknown: bool
+
+
+@dataclass(frozen=True)
 class CloudConfig:
     emotion: EmotionConfig
     identity: IdentityConfig
     gallery: GalleryConfig
+    platform: PlatformConfig
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -96,6 +112,7 @@ def load_config() -> CloudConfig:
     emotion = raw.get("emotion", {}) if isinstance(raw.get("emotion", {}), dict) else {}
     identity = raw.get("identity", {}) if isinstance(raw.get("identity", {}), dict) else {}
     gallery = raw.get("gallery", {}) if isinstance(raw.get("gallery", {}), dict) else {}
+    platform = raw.get("platform", {}) if isinstance(raw.get("platform", {}), dict) else {}
 
     return CloudConfig(
         emotion=EmotionConfig(
@@ -142,5 +159,18 @@ def load_config() -> CloudConfig:
         gallery=GalleryConfig(
             store_path=_resolve_path(str(gallery.get("store_path", "./data/cloud_gallery.npz"))),
             images_root=_resolve_path(str(gallery.get("images_root", "./data/gallery"))),
+        ),
+        platform=PlatformConfig(
+            enabled=bool(platform.get("enabled", False)),
+            base_url=str(platform.get("base_url", "http://127.0.0.1:9000")).rstrip("/"),
+            device_id=str(platform.get("device_id", "asdun-cloud")),
+            role=str(platform.get("role", "inference_server")),
+            display_name=str(platform.get("display_name", "asdun-cloud")),
+            status_interval_ms=max(1000, int(platform.get("status_interval_ms", 5000))),
+            timeout_ms=max(500, int(platform.get("timeout_ms", 2000))),
+            recognition_events_enabled=bool(platform.get("recognition_events_enabled", True)),
+            recognition_source_device=str(platform.get("recognition_source_device", "pi-01")),
+            recognition_queue_size=max(1, int(platform.get("recognition_queue_size", 128))),
+            recognition_report_unknown=bool(platform.get("recognition_report_unknown", False)),
         ),
     )

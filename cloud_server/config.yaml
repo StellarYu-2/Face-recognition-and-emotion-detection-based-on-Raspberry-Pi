@@ -49,3 +49,16 @@ identity:
 gallery:
   store_path: "./data/cloud_gallery_insightface.npz"
   images_root: "./data/gallery"
+
+platform:
+  enabled: true
+  base_url: "http://127.0.0.1:9000"
+  device_id: "asdun-cloud"
+  role: "inference_server"
+  display_name: "asdun-cloud"
+  status_interval_ms: 5000
+  timeout_ms: 2000
+  recognition_events_enabled: true
+  recognition_source_device: "pi-01"
+  recognition_queue_size: 128
+  recognition_report_unknown: false

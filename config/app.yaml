@@ -1,8 +1,9 @@
 # Camera source:
 # - "0" for /dev/video0
 # - "gst:<pipeline>" for GStreamer pipeline
+device_id: "pi-01"
 camera_source: "0"
-frame_width: 424
+frame_width: 320
 frame_height: 240
 frame_fps: 30
 opencv_num_threads: 1
@@ -61,7 +62,19 @@ cloud_emotion_sad_min_confidence: 35.0
 cloud_emotion_sad_min_gap: 0.05
 cloud_apply_identity: true
 cloud_apply_emotion: true
-cloud_debug: true
+cloud_debug: false
+
+# Platform server status reporting
+# The platform server is expected to run on the Windows/Tailscale host for Stage B.
+platform_enabled: true
+platform_base_url: "http://asdun-cloud:9000"
+platform_device_id: "pi-01"
+platform_role: "raspberry_pi"
+platform_display_name: "asdun@asdun"
+platform_status_interval_ms: 5000
+platform_connect_timeout_ms: 1000
+platform_timeout_ms: 2000
+platform_debug: true
 
 # Enrollment quality gate
 min_face_area_ratio: 0.08

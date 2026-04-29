@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ASDUN Platform</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f8fa;
+        --surface: #ffffff;
+        --line: #d9dee7;
+        --text: #18202e;
+        --muted: #657085;
+        --green: #168a4a;
+        --amber: #a86200;
+        --red: #b42318;
+        --blue: #2458d3;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Arial, Helvetica, sans-serif;
+        letter-spacing: 0;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        min-height: 64px;
+        padding: 0 24px;
+        border-bottom: 1px solid var(--line);
+        background: var(--surface);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      main {
+        width: min(1180px, calc(100vw - 32px));
+        margin: 24px auto;
+      }
+
+      section {
+        margin: 0 0 24px;
+        padding: 0;
+      }
+
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 0 0 10px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      button {
+        min-height: 34px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--text);
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      button:hover {
+        border-color: var(--blue);
+      }
+
+      select {
+        min-height: 34px;
+        min-width: 150px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--text);
+        font-size: 14px;
+      }
+
+      .section-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+
+      .status-strip {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        min-height: 38px;
+        margin-bottom: 18px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .dot {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        margin-right: 8px;
+        border-radius: 999px;
+        background: var(--amber);
+      }
+
+      .dot.ok {
+        background: var(--green);
+      }
+
+      .dot.bad {
+        background: var(--red);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        background: var(--surface);
+        border: 1px solid var(--line);
+      }
+
+      th,
+      td {
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+        font-size: 14px;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      tr.selectable {
+        cursor: pointer;
+      }
+
+      tr.selectable:hover td {
+        background: #f4f7fb;
+      }
+
+      tr.selected td {
+        background: #eef5ff;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-width: 74px;
+        min-height: 24px;
+        padding: 0 9px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .online {
+        color: var(--green);
+        background: #e8f5ee;
+      }
+
+      .offline {
+        color: var(--red);
+        background: #fdeceb;
+      }
+
+      .warn {
+        color: var(--amber);
+        background: #fff2da;
+      }
+
+      .neutral {
+        color: var(--muted);
+        background: #eef1f5;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .mono {
+        font-family: Consolas, Monaco, monospace;
+      }
+
+      .truncate {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .empty {
+        padding: 22px 12px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      .emotion-stack {
+        display: grid;
+        gap: 7px;
+      }
+
+      .emotion-row {
+        display: grid;
+        grid-template-columns: 72px minmax(120px, 1fr) 56px;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .meter {
+        height: 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #eef1f5;
+      }
+
+      .meter-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: var(--blue);
+      }
+
+      .meter-fill.happy {
+        background: #168a4a;
+      }
+
+      .meter-fill.calm {
+        background: #2458d3;
+      }
+
+      .meter-fill.sad {
+        background: #6f5bd6;
+      }
+
+      .meter-fill.angry {
+        background: #b42318;
+      }
+
+      @media (max-width: 760px) {
+        header {
+          align-items: flex-start;
+          flex-direction: column;
+          min-height: 88px;
+          padding: 14px 16px;
+        }
+
+        main {
+          width: calc(100vw - 20px);
+          margin-top: 16px;
+        }
+
+        table {
+          display: block;
+          overflow-x: auto;
+          white-space: nowrap;
+        }
+
+        th,
+        td {
+          min-width: 130px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>ASDUN Platform</h1>
+      <button id="refresh" type="button">Refresh</button>
+    </header>
+    <main>
+      <div class="status-strip">
+        <span><span id="ws-dot" class="dot"></span><span id="ws-state">Connecting</span></span>
+        <span id="updated">Not updated</span>
+      </div>
+
+      <section>
+        <div class="section-head">
+          <h2>Devices</h2>
+          <span id="device-count" class="muted">0</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 17%">Device</th>
+              <th style="width: 13%">Role</th>
+              <th style="width: 12%">Network</th>
+              <th style="width: 12%">App</th>
+              <th style="width: 12%">Cloud Link</th>
+              <th style="width: 13%">Inference</th>
+              <th>Status</th>
+              <th style="width: 16%">Last Seen</th>
+            </tr>
+          </thead>
+          <tbody id="devices">
+            <tr><td class="empty" colspan="8">No devices</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>People</h2>
+          <div class="section-actions">
+            <select id="person-filter" aria-label="Person filter">
+              <option value="">All people</option>
+            </select>
+            <span id="people-count" class="muted">0</span>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 17%">Person</th>
+              <th style="width: 10%">Records</th>
+              <th style="width: 13%">Identity Avg</th>
+              <th style="width: 15%">Dominant Emotion</th>
+              <th>Emotion Share</th>
+              <th style="width: 16%">Last Seen</th>
+            </tr>
+          </thead>
+          <tbody id="people">
+            <tr><td class="empty" colspan="6">No people</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>Recognition</h2>
+          <span id="event-count" class="muted">0</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 18%">Time</th>
+              <th style="width: 16%">Source</th>
+              <th style="width: 18%">Identity</th>
+              <th style="width: 16%">Emotion</th>
+              <th>Track</th>
+            </tr>
+          </thead>
+          <tbody id="events">
+            <tr><td class="empty" colspan="5">No events</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        devices: [],
+        people: [],
+        recognition_events: [],
+        selectedPerson: "",
+        ws: null,
+      };
+
+      const $ = (id) => document.getElementById(id);
+
+      function timeText(ms) {
+        if (!ms) return "-";
+        return new Date(ms).toLocaleString();
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        }[char]));
+      }
+
+      function shortStatus(status) {
+        const parts = [];
+        for (const [key, value] of Object.entries(status || {})) {
+          if (value === null || typeof value === "object") continue;
+          parts.push(`${key}=${value}`);
+          if (parts.length >= 5) break;
+        }
+        return parts.join("  ");
+      }
+
+      function signalClass(signal) {
+        if (!signal) return "neutral";
+        if (signal.state === "ok") return "online";
+        if (signal.state === "bad") return "offline";
+        if (signal.state === "warn") return "warn";
+        return "neutral";
+      }
+
+      function signalPill(signal) {
+        const safe = signal || { label: "-", detail: "" };
+        const title = safe.detail ? `${safe.label}: ${safe.detail}` : safe.label;
+        return `<span class="pill ${signalClass(safe)}" title="${title}">${safe.label || "-"}</span>`;
+      }
+
+      function deviceDetails(device) {
+        const status = device.status || {};
+        if (device.role === "raspberry_pi") {
+          const parts = [];
+          if (status.mode) parts.push(`mode=${status.mode}`);
+          if (status.inference_mode) parts.push(`inference=${status.inference_mode}`);
+          if (status.fps != null) parts.push(`fps=${Number(status.fps).toFixed(1)}`);
+          if (status.active_tracks != null) parts.push(`tracks=${status.active_tracks}`);
+          if (status.probe_host) parts.push(`probe=${status.probe_host}:${status.probe_port || 22}`);
+          return parts.join("  ");
+        }
+        if (device.role === "inference_server") {
+          const parts = [];
+          if (status.provider) parts.push(`provider=${status.provider}`);
+          if (status.gallery_count != null) parts.push(`gallery=${status.gallery_count}`);
+          if (status.gpu_name) parts.push(`gpu=${status.gpu_name}`);
+          if (status.emotion_ready != null) parts.push(`emotion=${status.emotion_ready ? "ready" : "not_ready"}`);
+          if (status.identity_ready != null) parts.push(`identity=${status.identity_ready ? "ready" : "not_ready"}`);
+          return parts.join("  ");
+        }
+        return shortStatus(status);
+      }
+
+      function isKnownRecognitionEvent(event) {
+        const rawIdentity = event.raw && typeof event.raw.identity === "object" ? event.raw.identity : {};
+        const name = String(event.name || rawIdentity.name || "").trim();
+        if (!name || name.toLowerCase() === "unknown") return false;
+        if (event.known === false || rawIdentity.known === false) return false;
+        return true;
+      }
+
+      function eventPersonName(event) {
+        const rawIdentity = event.raw && typeof event.raw.identity === "object" ? event.raw.identity : {};
+        return String(event.name || rawIdentity.name || "").trim();
+      }
+
+      function matchesSelectedPerson(event) {
+        if (!state.selectedPerson) return true;
+        return eventPersonName(event).toLowerCase() === state.selectedPerson.toLowerCase();
+      }
+
+      function renderPersonFilter() {
+        const select = $("person-filter");
+        const selected = state.selectedPerson;
+        const names = (state.people || []).map((person) => person.name).filter(Boolean);
+        select.innerHTML = '<option value="">All people</option>' + names.map((name) => {
+          const safeName = escapeHtml(name);
+          return `<option value="${safeName}">${safeName}</option>`;
+        }).join("");
+        select.value = names.includes(selected) ? selected : "";
+        if (selected && !names.includes(selected)) {
+          state.selectedPerson = "";
+        }
+      }
+
+      function renderDevices() {
+        $("device-count").textContent = `${state.devices.length}`;
+        const body = $("devices");
+        if (!state.devices.length) {
+          body.innerHTML = '<tr><td class="empty" colspan="8">No devices</td></tr>';
+          return;
+        }
+        body.innerHTML = state.devices.map((device) => {
+          const display = device.display_name || device.device_id;
+          const signals = device.signals || {};
+          const details = deviceDetails(device);
+          return `
+            <tr>
+              <td class="truncate" title="${display}">
+                <strong>${display}</strong>
+                <div class="muted mono">${device.device_id}</div>
+              </td>
+              <td>${device.role || "unknown"}</td>
+              <td>${signalPill(signals.network)}</td>
+              <td>${signalPill(signals.app)}</td>
+              <td>${signalPill(signals.cloud_link)}</td>
+              <td>${signalPill(signals.inference)}</td>
+              <td class="mono truncate" title="${details}">${details || "-"}</td>
+              <td>${timeText(device.last_seen_ms)}</td>
+            </tr>
+          `;
+        }).join("");
+      }
+
+      function emotionClass(label) {
+        const normalized = String(label || "").toLowerCase();
+        if (normalized === "happy") return "happy";
+        if (normalized === "calm" || normalized === "neutral") return "calm";
+        if (normalized === "sad") return "sad";
+        if (normalized === "angry") return "angry";
+        return "";
+      }
+
+      function renderEmotionShare(emotions) {
+        const rows = (emotions || []).filter((item) => Number(item.weighted_pct) > 0);
+        if (!rows.length) return "-";
+        return `
+          <div class="emotion-stack">
+            ${rows.slice(0, 4).map((item) => {
+              const pct = Math.max(0, Math.min(100, Number(item.weighted_pct || 0)));
+              const label = escapeHtml(item.label || "-");
+              return `
+                <div class="emotion-row">
+                  <span>${label}</span>
+                  <span class="meter"><span class="meter-fill ${emotionClass(item.label)}" style="width: ${pct}%"></span></span>
+                  <span class="mono">${pct.toFixed(1)}%</span>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        `;
+      }
+
+      function renderPeople() {
+        const people = state.people || [];
+        $("people-count").textContent = `${people.length}`;
+        const body = $("people");
+        if (!people.length) {
+          body.innerHTML = '<tr><td class="empty" colspan="6">No people</td></tr>';
+          return;
+        }
+        body.innerHTML = people.map((person) => {
+          const name = escapeHtml(person.name || "-");
+          const selected = state.selectedPerson && person.name === state.selectedPerson;
+          const sources = (person.sources || []).join(", ");
+          const dominant = person.dominant_emotion;
+          const dominantText = dominant ? `${escapeHtml(dominant.label)} ${Number(dominant.weighted_pct || 0).toFixed(1)}%` : "-";
+          return `
+            <tr class="selectable ${selected ? "selected" : ""}" data-person="${name}">
+              <td class="truncate" title="${name}">
+                <strong>${name}</strong>
+                <div class="muted mono">${escapeHtml(sources || "-")}</div>
+              </td>
+              <td class="mono">${person.event_count || 0}</td>
+              <td>${Number(person.avg_identity_confidence || 0).toFixed(1)}%</td>
+              <td>${dominantText}</td>
+              <td>${renderEmotionShare(person.emotions)}</td>
+              <td>${timeText(person.last_seen_ms)}</td>
+            </tr>
+          `;
+        }).join("");
+      }
+
+      function renderEvents() {
+        const events = (state.recognition_events || []).filter(isKnownRecognitionEvent).filter(matchesSelectedPerson);
+        $("event-count").textContent = `${events.length}`;
+        const body = $("events");
+        if (!events.length) {
+          body.innerHTML = '<tr><td class="empty" colspan="5">No events</td></tr>';
+          return;
+        }
+        body.innerHTML = events.slice(0, 50).map((event) => {
+          const identity = event.name ? `${event.name}${event.identity_confidence == null ? "" : ` ${Number(event.identity_confidence).toFixed(1)}%`}` : "-";
+          const emotion = event.emotion ? `${event.emotion}${event.emotion_confidence == null ? "" : ` ${Number(event.emotion_confidence).toFixed(1)}%`}` : "-";
+          return `
+            <tr>
+              <td>${timeText(event.ts_ms)}</td>
+              <td class="mono truncate">${event.source_device || "-"}</td>
+              <td>${identity}</td>
+              <td>${emotion}</td>
+              <td class="mono">track=${event.track_id ?? "-"} frame=${event.frame_id ?? "-"}</td>
+            </tr>
+          `;
+        }).join("");
+      }
+
+      function renderAll() {
+        renderDevices();
+        renderPersonFilter();
+        renderPeople();
+        renderEvents();
+        $("updated").textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      }
+
+      async function loadRecognitionEvents() {
+        const params = new URLSearchParams({ limit: "500" });
+        if (state.selectedPerson) params.set("person", state.selectedPerson);
+        const res = await fetch(`/api/events/recognition?${params.toString()}`);
+        const data = await res.json();
+        state.recognition_events = data.events || [];
+      }
+
+      async function selectPerson(name) {
+        state.selectedPerson = String(name || "").trim();
+        await loadRecognitionEvents();
+        renderAll();
+      }
+
+      async function loadSnapshot() {
+        const res = await fetch("/api/snapshot");
+        const data = await res.json();
+        state.devices = data.devices || [];
+        state.people = data.people || [];
+        if (state.selectedPerson) {
+          await loadRecognitionEvents();
+        } else {
+          state.recognition_events = data.recognition_events || [];
+        }
+        renderAll();
+      }
+
+      function setSocketState(label, kind) {
+        $("ws-state").textContent = label;
+        $("ws-dot").className = `dot ${kind || ""}`;
+      }
+
+      function openSocket() {
+        const protocol = location.protocol === "https:" ? "wss" : "ws";
+        const ws = new WebSocket(`${protocol}://${location.host}/ws`);
+        state.ws = ws;
+        ws.onopen = () => setSocketState("Live", "ok");
+        ws.onclose = () => {
+          setSocketState("Reconnecting", "bad");
+          setTimeout(openSocket, 1500);
+        };
+        ws.onerror = () => setSocketState("Socket error", "bad");
+        ws.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          if (message.type === "snapshot") {
+            state.devices = message.devices || [];
+            state.people = message.people || [];
+            if (state.selectedPerson) {
+              loadRecognitionEvents()
+                .then(renderAll)
+                .catch(() => setSocketState("HTTP error", "bad"));
+              return;
+            }
+            state.recognition_events = message.recognition_events || [];
+          }
+          if (message.type === "device_status") {
+            const device = message.device;
+            const index = state.devices.findIndex((item) => item.device_id === device.device_id);
+            if (index >= 0) state.devices[index] = device;
+            else state.devices.unshift(device);
+          }
+          if (message.type === "recognition_event") {
+            if (matchesSelectedPerson(message.event)) {
+              state.recognition_events.unshift(message.event);
+              state.recognition_events = state.recognition_events.slice(0, 500);
+            }
+          }
+          if (message.type === "people") {
+            state.people = message.people || [];
+          }
+          renderAll();
+        };
+      }
+
+      $("refresh").addEventListener("click", loadSnapshot);
+      $("person-filter").addEventListener("change", (event) => {
+        selectPerson(event.target.value).catch(() => setSocketState("HTTP error", "bad"));
+      });
+      $("people").addEventListener("click", (event) => {
+        const row = event.target.closest("tr[data-person]");
+        if (!row) return;
+        const name = row.getAttribute("data-person") || "";
+        selectPerson(name === state.selectedPerson ? "" : name).catch(() => setSocketState("HTTP error", "bad"));
+      });
+      loadSnapshot().catch(() => setSocketState("HTTP error", "bad"));
+      openSocket();
+    </script>
+  </body>
+</html>

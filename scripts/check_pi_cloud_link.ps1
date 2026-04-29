@@ -1,6 +1,6 @@
 param(
     [string]$PiHost = "asdun",
-    [string]$PiUser = "pi",
+    [string]$PiUser = "asdun",
     [string]$CloudUrl = "http://asdun-cloud:8000",
     [int]$TimeoutSeconds = 3,
     [switch]$SkipWindowsLocal

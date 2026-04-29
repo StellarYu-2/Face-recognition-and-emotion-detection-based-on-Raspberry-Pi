@@ -14,6 +14,7 @@
 #include "engine/FaceLandmarkEstimator.hpp"
 #include "engine/FaceRecognizer.hpp"
 #include "engine/InferencePipeline.hpp"
+#include "platform/PlatformClient.hpp"
 #include "quality/FaceQualityGate.hpp"
 #include "storage/Database.hpp"
 #include "storage/EmbeddingStore.hpp"
@@ -24,6 +25,7 @@
 namespace asdun {
 
 struct AppConfig {
+  std::string device_id{"pi-01"};
   std::string camera_source{"0"};
   int frame_width{424};
   int frame_height{240};
@@ -100,6 +102,7 @@ struct AppConfig {
 
   std::string inference_mode{"local"};
   CloudClientConfig cloud{};
+  PlatformClientConfig platform{};
 };
 
 class App {
@@ -116,6 +119,7 @@ class App {
   void handleDeletePerson();
   void submitCloudRequests(const FramePacket& frame, const std::vector<TrackState>& tracks);
   bool applyCloudResults(std::uint64_t now_ms);
+  void updatePlatformStatus(const std::string& mode, int active_tracks = 0, double fps = 0.0);
   static cv::Rect expandRect(const cv::Rect& rect, const cv::Size& image_size, float scale);
   static std::string trim(const std::string& s);
 
@@ -136,6 +140,7 @@ class App {
   std::unique_ptr<FaceQualityGate> quality_gate_;
   std::unique_ptr<InferencePipeline> pipeline_;
   std::unique_ptr<CloudClient> cloud_client_;
+  std::unique_ptr<PlatformClient> platform_client_;
   std::unique_ptr<Renderer> renderer_;
 };
 

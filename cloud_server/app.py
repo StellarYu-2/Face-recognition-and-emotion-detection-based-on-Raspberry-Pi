@@ -12,6 +12,7 @@ try:
     from .services.fake_analyzer import analyze_fake
     from .services.gallery_store import GalleryStore
     from .services.identity_service import IdentityService
+    from .services.platform_reporter import PlatformReporter
     from .services.runtime import get_runtime_info, preload_onnxruntime_dlls
 except ImportError:  # Allows `uvicorn app:app` from inside cloud_server/.
     from services.config import load_config
@@ -19,6 +20,7 @@ except ImportError:  # Allows `uvicorn app:app` from inside cloud_server/.
     from services.fake_analyzer import analyze_fake
     from services.gallery_store import GalleryStore
     from services.identity_service import IdentityService
+    from services.platform_reporter import PlatformReporter
     from services.runtime import get_runtime_info, preload_onnxruntime_dlls
 
 
@@ -43,6 +45,24 @@ _EMOTION_SERVICE = EmotionService(_CONFIG.emotion)
 _IDENTITY_SERVICE = IdentityService(_CONFIG.identity, _GALLERY)
 
 
+def _platform_status() -> dict:
+    runtime = get_runtime_info()
+    emotion_status = _EMOTION_SERVICE.status()
+    identity_status = _IDENTITY_SERVICE.status()
+    return {
+        "service": "inference",
+        "device": runtime.device,
+        "provider": runtime.active_provider,
+        "gpu_name": runtime.gpu_name,
+        "gallery_count": _GALLERY.count,
+        "emotion_ready": emotion_status.ready,
+        "identity_ready": identity_status.ready,
+    }
+
+
+_PLATFORM_REPORTER = PlatformReporter(_CONFIG.platform, _platform_status)
+
+
 def _unknown_identity(reason: str) -> dict:
     return {
         "name": "Unknown",
@@ -53,6 +73,16 @@ def _unknown_identity(reason: str) -> dict:
         "samples": 0,
         "debug": {"reason": reason},
     }
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    _PLATFORM_REPORTER.start()
+
+
+@app.on_event("shutdown")
+def _shutdown() -> None:
+    _PLATFORM_REPORTER.stop()
 
 
 @app.get("/health")
@@ -229,4 +259,5 @@ async def analyze(
         result["debug"]["emotion_error"] = _EMOTION_SERVICE.status().error
 
     result["latency_ms"] = round((time.perf_counter() - start) * 1000.0, 3)
+    _PLATFORM_REPORTER.enqueue_recognition_event(result)
     return result

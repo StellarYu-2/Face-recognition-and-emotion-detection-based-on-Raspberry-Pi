@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <functional>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -100,6 +102,7 @@ int App::run() {
     return 1;
   }
 
+  updatePlatformStatus("idle");
   while (sm_.getState() != AppState::Exit) {
     printMainMenu();
     std::string cmd;
@@ -111,12 +114,14 @@ int App::run() {
       handleEnrollment();
       if (sm_.getState() != AppState::Exit) {
         sm_.setState(AppState::MainMenu);
+        updatePlatformStatus("idle");
       }
     } else if (cmd == "2") {
       sm_.setState(AppState::Recognize);
       handleRecognition();
       if (sm_.getState() != AppState::Exit) {
         sm_.setState(AppState::MainMenu);
+        updatePlatformStatus("idle");
       }
     } else if (cmd == "3") {
       handleDeletePerson();
@@ -128,6 +133,7 @@ int App::run() {
       if (camera_ != nullptr) {
         camera_->stop();
       }
+      updatePlatformStatus("exit");
       sm_.setState(AppState::Exit);
     } else {
       std::cout << "[Menu] invalid command, please retry." << std::endl;
@@ -137,6 +143,7 @@ int App::run() {
   if (camera_ != nullptr) {
     camera_->stop();
   }
+  platform_client_.reset();
   return 0;
 }
 
@@ -196,7 +203,10 @@ bool App::loadConfig() {
 
     try {
       // 相机与通用参数
-      if (key == "camera_source") {
+      if (key == "device_id") {
+        config_.device_id = value;
+        config_.platform.device_id = value;
+      } else if (key == "camera_source") {
         config_.camera_source = value;
       } else if (key == "frame_width") {
         config_.frame_width = std::stoi(value);
@@ -400,6 +410,24 @@ bool App::loadConfig() {
         config_.cloud.apply_emotion = parseBoolValue(value);
       } else if (key == "cloud_debug") {
         config_.cloud.debug = parseBoolValue(value);
+      } else if (key == "platform_enabled") {
+        config_.platform.enabled = parseBoolValue(value);
+      } else if (key == "platform_base_url") {
+        config_.platform.base_url = value;
+      } else if (key == "platform_device_id") {
+        config_.platform.device_id = value;
+      } else if (key == "platform_role") {
+        config_.platform.role = value;
+      } else if (key == "platform_display_name") {
+        config_.platform.display_name = value;
+      } else if (key == "platform_status_interval_ms") {
+        config_.platform.status_interval_ms = std::stoi(value);
+      } else if (key == "platform_connect_timeout_ms") {
+        config_.platform.connect_timeout_ms = std::stoi(value);
+      } else if (key == "platform_timeout_ms") {
+        config_.platform.timeout_ms = std::stoi(value);
+      } else if (key == "platform_debug") {
+        config_.platform.debug = parseBoolValue(value);
       }
     } catch (...) {
       std::cerr << "[App] ignoring invalid config entry: " << key << "=" << value << std::endl;
@@ -409,6 +437,9 @@ bool App::loadConfig() {
   std::string mode = config_.inference_mode;
   std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   config_.cloud.enabled = (mode == "hybrid" || mode == "cloud");
+  if (config_.platform.device_id.empty()) {
+    config_.platform.device_id = config_.device_id;
+  }
   return true;
 }
 
@@ -573,7 +604,32 @@ bool App::initComponents() {
       cloud_client_.reset();
     }
   }
+  if (config_.platform.enabled) {
+    platform_client_ = std::make_unique<PlatformClient>(config_.platform);
+    PlatformStatus status{};
+    status.mode = "idle";
+    status.inference_mode = config_.inference_mode;
+    status.cloud_connected = cloud_client_ && cloud_client_->enabled();
+    platform_client_->updateStatus(status);
+    if (!platform_client_->start()) {
+      std::cerr << "[PlatformClient] disabled; platform status reporting will be skipped." << std::endl;
+      platform_client_.reset();
+    }
+  }
   return true;
+}
+
+void App::updatePlatformStatus(const std::string& mode, int active_tracks, double fps) {
+  if (!platform_client_ || !platform_client_->enabled()) {
+    return;
+  }
+  PlatformStatus status{};
+  status.mode = mode;
+  status.inference_mode = config_.inference_mode;
+  status.cloud_connected = cloud_client_ && cloud_client_->enabled();
+  status.active_tracks = active_tracks;
+  status.fps = fps;
+  platform_client_->updateStatus(status);
 }
 
 /** @brief 打印主菜单到控制台 */
@@ -598,6 +654,7 @@ void App::printMainMenu() const {
  *  5. 完成后重载底库
  */
 void App::handleEnrollment() {
+  updatePlatformStatus("enrollment");
   if (!camera_->start()) {
     std::cerr << "[Enrollment] failed to start camera." << std::endl;
     return;
@@ -789,6 +846,7 @@ void App::handleEnrollment() {
     }
   }
   std::cout << "[Enrollment] finished." << std::endl;
+  updatePlatformStatus("idle");
 }
 
 cv::Rect App::expandRect(const cv::Rect& rect, const cv::Size& image_size, float scale) {
@@ -916,6 +974,7 @@ bool App::applyCloudResults(std::uint64_t now_ms) {
  *  3. 支持按 'q' 退出，'r' 重载底库
  */
 void App::handleRecognition() {
+  updatePlatformStatus("recognition");
   if (!camera_->start()) {
     std::cerr << "[Recognition] failed to start camera." << std::endl;
     return;
@@ -924,21 +983,71 @@ void App::handleRecognition() {
   embedding_store_->reload();
   std::cout << "[Recognition] press q to quit, press r to reload local gallery." << std::endl;
 
+  auto fps_window_start = std::chrono::steady_clock::now();
+  int fps_frames = 0;
+  double fps = 0.0;
+  bool fps_ready = false;
+  double wait_ms_sum = 0.0;
+  double pipeline_ms_sum = 0.0;
+  double pipeline_ms_max = 0.0;
   while (true) {
+    const auto frame_wait_start = std::chrono::steady_clock::now();
     FramePacket frame{};
     if (!camera_->getLatestFrame(frame, 200)) {
       continue;
     }
+    const auto frame_got_at = std::chrono::steady_clock::now();
 
     applyCloudResults(frame.ts_ms);
 
     // 整帧送入推理管线，返回所有人脸的跟踪/识别/情绪结果
+    const auto pipeline_start = std::chrono::steady_clock::now();
     RecognitionResult result = pipeline_->process(frame);
+    const auto pipeline_end = std::chrono::steady_clock::now();
+    const double wait_ms = std::chrono::duration<double, std::milli>(frame_got_at - frame_wait_start).count();
+    const double pipeline_ms = std::chrono::duration<double, std::milli>(pipeline_end - pipeline_start).count();
+    wait_ms_sum += wait_ms;
+    pipeline_ms_sum += pipeline_ms;
+    pipeline_ms_max = std::max(pipeline_ms_max, pipeline_ms);
     submitCloudRequests(frame, result.tracks);
     if (applyCloudResults(frame.ts_ms)) {
       result.tracks = track_manager_->snapshot();
     }
-    renderer_->drawRecognition(frame.bgr, result.tracks);
+    ++fps_frames;
+    const auto now = std::chrono::steady_clock::now();
+    const double window_ms = std::chrono::duration<double, std::milli>(now - fps_window_start).count();
+    if (window_ms >= 1000.0) {
+      const int measured_frames = std::max(1, fps_frames);
+      fps = static_cast<double>(fps_frames) * 1000.0 / window_ms;
+      fps_frames = 0;
+      fps_window_start = now;
+      fps_ready = true;
+      const double wait_avg_ms = wait_ms_sum / static_cast<double>(measured_frames);
+      const double pipeline_avg_ms = pipeline_ms_sum / static_cast<double>(measured_frames);
+      std::cout << "[Recognition] fps=" << std::fixed << std::setprecision(1) << fps
+                << " tracks=" << result.tracks.size()
+                << " mode=" << config_.inference_mode
+                << " cloud=" << ((cloud_client_ && cloud_client_->enabled()) ? "on" : "off")
+                << " local_emotion_faces=" << config_.max_emotion_faces
+                << " wait_avg_ms=" << wait_avg_ms
+                << " pipeline_avg_ms=" << pipeline_avg_ms
+                << " pipeline_max_ms=" << pipeline_ms_max
+                << std::endl;
+      wait_ms_sum = 0.0;
+      pipeline_ms_sum = 0.0;
+      pipeline_ms_max = 0.0;
+    }
+    updatePlatformStatus("recognition", static_cast<int>(result.tracks.size()), fps);
+    std::ostringstream overlay;
+    overlay << "FPS: ";
+    if (fps_ready) {
+      overlay << std::fixed << std::setprecision(1) << fps;
+    } else {
+      overlay << "--";
+    }
+    overlay << " | tracks: " << result.tracks.size()
+            << " | cloud: " << ((cloud_client_ && cloud_client_->enabled()) ? "on" : "off");
+    renderer_->drawRecognition(frame.bgr, result.tracks, overlay.str());
 
     const int key = renderer_->waitKey(1);
     if (key == 'q' || key == 'Q') {
@@ -956,6 +1065,7 @@ void App::handleRecognition() {
 
   camera_->stop();
   renderer_->closeWindow();
+  updatePlatformStatus("idle");
 }
 
 /**

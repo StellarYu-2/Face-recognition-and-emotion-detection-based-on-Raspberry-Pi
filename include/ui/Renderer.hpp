@@ -14,7 +14,9 @@ class Renderer {
   explicit Renderer(std::string window_name);
   ~Renderer();
 
-  void drawRecognition(const cv::Mat& frame_bgr, const std::vector<TrackState>& tracks) const;
+  void drawRecognition(const cv::Mat& frame_bgr,
+                       const std::vector<TrackState>& tracks,
+                       const std::string& status_text = "") const;
   void drawEnrollment(const cv::Mat& frame_bgr,
                       const cv::Rect& face_box,
                       const std::string& status_text,

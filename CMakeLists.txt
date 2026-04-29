@@ -50,6 +50,7 @@ add_executable(asdun_access
   src/core/StateMachine.cpp
   src/camera/CameraManager.cpp
   src/cloud/CloudClient.cpp
+  src/platform/PlatformClient.cpp
   src/engine/ConfidenceMapper.cpp
   src/engine/FaceDetector.cpp
   src/engine/FaceLandmarkEstimator.cpp

@@ -18,9 +18,22 @@ void Renderer::ensureWindow() const {
   }
 }
 
-void Renderer::drawRecognition(const cv::Mat& frame_bgr, const std::vector<TrackState>& tracks) const {
+void Renderer::drawRecognition(const cv::Mat& frame_bgr,
+                               const std::vector<TrackState>& tracks,
+                               const std::string& status_text) const {
   ensureWindow();
   cv::Mat canvas = frame_bgr.clone();
+  if (!status_text.empty()) {
+    cv::rectangle(canvas, cv::Rect(0, 0, std::min(canvas.cols, 360), 30), cv::Scalar(0, 0, 0), cv::FILLED);
+    cv::putText(canvas,
+                status_text,
+                cv::Point(8, 21),
+                cv::FONT_HERSHEY_SIMPLEX,
+                0.55,
+                cv::Scalar(255, 255, 255),
+                1,
+                cv::LINE_AA);
+  }
   for (const auto& tr : tracks) {
     const cv::Scalar color = tr.identity.known ? cv::Scalar(0, 220, 0) : cv::Scalar(0, 0, 220);
     cv::rectangle(canvas, tr.box, color, 2);

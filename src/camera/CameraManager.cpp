@@ -1,7 +1,9 @@
 #include "camera/CameraManager.hpp"
 
 #include <chrono>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <vector>
 
 namespace asdun {
@@ -49,6 +51,38 @@ bool configureAndProbe(cv::VideoCapture& cap, int width, int height, int fps, bo
   return false;
 }
 
+std::string fourccToString(double value) {
+  const auto fourcc = static_cast<int>(value);
+  std::string out;
+  out.push_back(static_cast<char>(fourcc & 0xFF));
+  out.push_back(static_cast<char>((fourcc >> 8) & 0xFF));
+  out.push_back(static_cast<char>((fourcc >> 16) & 0xFF));
+  out.push_back(static_cast<char>((fourcc >> 24) & 0xFF));
+  for (char& c : out) {
+    if (c < 32 || c > 126) {
+      c = '?';
+    }
+  }
+  return out;
+}
+
+void logCaptureMode(const cv::VideoCapture& cap, const cv::Mat& first_frame, int requested_width, int requested_height, int requested_fps) {
+  std::ostringstream oss;
+  oss << std::fixed << std::setprecision(1);
+  oss << "[Camera] Requested " << requested_width << "x" << requested_height << "@" << requested_fps;
+  oss << " actual_props=" << cap.get(cv::CAP_PROP_FRAME_WIDTH) << "x" << cap.get(cv::CAP_PROP_FRAME_HEIGHT)
+      << "@" << cap.get(cv::CAP_PROP_FPS)
+      << " fourcc=" << fourccToString(cap.get(cv::CAP_PROP_FOURCC));
+  if (!first_frame.empty()) {
+    oss << " first_frame=" << first_frame.cols << "x" << first_frame.rows;
+  }
+  std::cerr << oss.str() << std::endl;
+}
+
+bool actualFourccIs(const cv::VideoCapture& cap, const char* code) {
+  return fourccToString(cap.get(cv::CAP_PROP_FOURCC)) == code;
+}
+
 }  // namespace
 
 CameraManager::CameraManager(std::string source, int width, int height, int fps)
@@ -72,6 +106,23 @@ bool CameraManager::openCapture() {
       cap_.release();
       return false;
     }
+    cv::Mat first_frame;
+    cap_.read(first_frame);
+    if (!first_frame.empty()) {
+      {
+        std::lock_guard<std::mutex> lock(frame_mutex_);
+        FramePacket pkt{};
+        pkt.bgr = first_frame;
+        pkt.frame_id = ++frame_counter_;
+        const auto now = std::chrono::system_clock::now();
+        pkt.ts_ms = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count());
+        latest_frame_ = std::move(pkt);
+        has_frame_ = true;
+      }
+      frame_cv_.notify_one();
+    }
+    logCaptureMode(cap_, first_frame, width, height, fps_);
     width_ = width;
     height_ = height;
     return true;
@@ -82,7 +133,13 @@ bool CameraManager::openCapture() {
     if (!cap_.open(pipeline, cv::CAP_GSTREAMER)) {
       return false;
     }
-    return configureAndProbe(cap_, width_, height_, fps_, false);
+    if (!configureAndProbe(cap_, width_, height_, fps_, false)) {
+      return false;
+    }
+    cv::Mat first_frame;
+    cap_.read(first_frame);
+    logCaptureMode(cap_, first_frame, width_, height_, fps_);
+    return true;
   } else if (isDigitsOnly(source_)) {
     const int index = std::stoi(source_);
     std::vector<std::pair<int, int>> sizes;
@@ -107,8 +164,11 @@ bool CameraManager::openCapture() {
             std::cerr << "[Camera] Fallback to " << size.first << "x" << size.second << " for source " << source_
                       << std::endl;
           }
-          if (prefer_mjpg) {
+          if (actualFourccIs(cap_, "MJPG")) {
             std::cerr << "[Camera] Using MJPG capture mode" << std::endl;
+          } else if (prefer_mjpg) {
+            std::cerr << "[Camera] MJPG was requested but driver selected "
+                      << fourccToString(cap_.get(cv::CAP_PROP_FOURCC)) << std::endl;
           }
           return true;
         }
@@ -119,7 +179,13 @@ bool CameraManager::openCapture() {
     if (!cap_.open(source_, cv::CAP_ANY)) {
       return false;
     }
-    return configureAndProbe(cap_, width_, height_, fps_, false);
+    if (!configureAndProbe(cap_, width_, height_, fps_, false)) {
+      return false;
+    }
+    cv::Mat first_frame;
+    cap_.read(first_frame);
+    logCaptureMode(cap_, first_frame, width_, height_, fps_);
+    return true;
   }
 }
 
