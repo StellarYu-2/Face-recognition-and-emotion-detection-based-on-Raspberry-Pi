@@ -28,6 +28,15 @@ deploy/platform_server/README.md
 
 ## 启动
 
+如果是新 clone 的仓库，先复制本地配置模板：
+
+```powershell
+Copy-Item .\config\app.example.yaml .\config\app.yaml
+Copy-Item .\cloud_server\config.example.yaml .\cloud_server\config.yaml
+```
+
+然后把 `config/app.yaml`、`cloud_server/config.yaml` 中的私有地址和 token 改成你自己的值。这两个真实配置文件被 `.gitignore` 忽略，不应该提交到 GitHub。
+
 从项目根目录运行：
 
 ```powershell
@@ -60,11 +69,11 @@ http://127.0.0.1:9000
 
 ```powershell
 $env:ASDUN_DEVICE_AUTH_ENABLED = "true"
-$env:ASDUN_DEVICE_TOKENS = "pi-01=pi-token,asdun-cloud=cloud-token,esp32-01=esp32-token"
+$env:ASDUN_DEVICE_TOKENS = "pi-01=pi-token,gpu-server=cloud-token,esp32-01=esp32-token"
 .\scripts\run_platform_server.ps1
 ```
 
-公网云服务器通常不能直接访问你的 Tailscale 主机名 `asdun`，建议在云端环境变量里关闭主动探测：
+公网云服务器通常不能直接访问你的 Tailscale 主机名，例如 `raspberry-pi.local`，建议在云端环境变量里关闭主动探测：
 
 ```text
 ASDUN_PROBE_PI_ENABLED=false
@@ -80,7 +89,7 @@ X-ASDUN-Device-Token: esp32-token
 也可以用 JSON 格式配置 token：
 
 ```powershell
-$env:ASDUN_DEVICE_TOKENS = '{"pi-01":"pi-token","asdun-cloud":"cloud-token","esp32-01":"esp32-token"}'
+$env:ASDUN_DEVICE_TOKENS = '{"pi-01":"pi-token","gpu-server":"cloud-token","esp32-01":"esp32-token"}'
 ```
 
 ## 常用 API
@@ -123,7 +132,7 @@ Content-Type: application/json
 {
   "device_id": "pi-01",
   "role": "raspberry_pi",
-  "display_name": "asdun@asdun",
+  "display_name": "raspberry-pi",
   "online": true,
   "status": {
     "mode": "hybrid",
@@ -157,7 +166,7 @@ Content-Type: application/json
 ```json
 {
   "source_device": "pi-01",
-  "producer_device": "asdun-cloud",
+  "producer_device": "gpu-server",
   "track_id": 3,
   "frame_id": 1024,
   "identity": {
@@ -265,6 +274,51 @@ Content-Type: application/json
 
 ```http
 X-ASDUN-Admin-Token: your-admin-token
+```
+
+Dashboard 的 Commands 区域也可以直接创建命令。公网环境如果设置了 `ASDUN_ADMIN_TOKEN`，先在 `Admin token` 输入框填入管理 token，再点击 `Send` 或常用命令按钮。网页会把 token 保存在当前浏览器的 `localStorage`，下次打开同一个浏览器会自动填入；需要清除时点击 `Clear`。
+
+常用命令按钮：
+
+| 按钮 | command |
+|---|---|
+| `Ping` | `ping` |
+| `Status` | `status` |
+| `Reload gallery` | `reload_gallery` |
+
+Raspberry Pi 端现在会按 `config/app.yaml` 中的配置轮询命令：
+
+```yaml
+platform_command_poll_enabled: true
+platform_command_poll_interval_ms: 5000
+platform_command_poll_limit: 5
+```
+
+Pi 当前支持的命令：
+
+| command | 说明 |
+|---|---|
+| `ping` | 连通性测试，返回 `pong` |
+| `status` | 返回当前推理模式和云端连接状态 |
+| `reload_gallery` | 重新加载本地人脸库 |
+| `reload_people` | `reload_gallery` 的别名 |
+| `set_mode` | 仅检查/确认模式；运行时切换模式会返回需要改配置并重启 |
+
+例如让 Pi 重新加载人脸库：
+
+```json
+{
+  "device_id": "pi-01",
+  "command": "reload_gallery",
+  "payload": {}
+}
+```
+
+真实测试 Pi 命令执行：
+
+```powershell
+.\scripts\post_platform_command.ps1 -PlatformUrl https://api.asdun.example.com -DeviceId pi-01 -Command ping -AdminToken your-admin-token
+.\scripts\post_platform_command.ps1 -PlatformUrl https://api.asdun.example.com -DeviceId pi-01 -Command reload_gallery -AdminToken your-admin-token
 ```
 
 ## 人员统计

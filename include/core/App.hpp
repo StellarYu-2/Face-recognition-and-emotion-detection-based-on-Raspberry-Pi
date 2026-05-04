@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include <opencv2/core.hpp>
@@ -120,12 +121,14 @@ class App {
   void submitCloudRequests(const FramePacket& frame, const std::vector<TrackState>& tracks);
   bool applyCloudResults(std::uint64_t now_ms);
   void updatePlatformStatus(const std::string& mode, int active_tracks = 0, double fps = 0.0);
+  PlatformCommandResult handlePlatformCommand(const PlatformCommand& command);
   static cv::Rect expandRect(const cv::Rect& rect, const cv::Size& image_size, float scale);
   static std::string trim(const std::string& s);
 
   std::string config_path_;
   AppConfig config_{};
   StateMachine sm_{};
+  std::mutex gallery_mutex_{};
 
   std::unique_ptr<CameraManager> camera_;
   std::unique_ptr<Database> database_;

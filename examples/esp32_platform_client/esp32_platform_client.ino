@@ -6,7 +6,7 @@ const char* WIFI_SSID = "your_wifi";
 const char* WIFI_PASSWORD = "your_password";
 
 // Use your public Platform Server base URL. Do not include a trailing slash.
-const char* PLATFORM_BASE_URL = "http://8.163.47.15:9000";
+const char* PLATFORM_BASE_URL = "https://api.asdun.example.com";
 
 const char* DEVICE_ID = "esp32-01";
 const char* DEVICE_TOKEN = "replace-with-esp32-token";

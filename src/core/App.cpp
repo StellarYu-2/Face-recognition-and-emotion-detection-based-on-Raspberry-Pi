@@ -47,6 +47,21 @@ std::string stripOptionalQuotes(std::string value) {
   return value;
 }
 
+std::string lowerValue(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return value;
+}
+
+std::string payloadValue(const PlatformCommand& command, const std::string& key) {
+  const auto it = command.payload.find(key);
+  if (it == command.payload.end()) {
+    return "";
+  }
+  return trimValue(it->second);
+}
+
 /**
  * @brief 根据已采集数量计算当前录入阶段（0~3）
  * @param captured      已采集的照片数
@@ -424,6 +439,12 @@ bool App::loadConfig() {
         config_.platform.display_name = value;
       } else if (key == "platform_status_interval_ms") {
         config_.platform.status_interval_ms = std::stoi(value);
+      } else if (key == "platform_command_poll_enabled") {
+        config_.platform.command_poll_enabled = parseBoolValue(value);
+      } else if (key == "platform_command_poll_interval_ms") {
+        config_.platform.command_poll_interval_ms = std::stoi(value);
+      } else if (key == "platform_command_poll_limit") {
+        config_.platform.command_poll_limit = std::stoi(value);
       } else if (key == "platform_connect_timeout_ms") {
         config_.platform.connect_timeout_ms = std::stoi(value);
       } else if (key == "platform_timeout_ms") {
@@ -556,7 +577,10 @@ bool App::initComponents() {
 
   // 加载底库特征，用于 1:N 比对
   embedding_store_->setActiveModelTag(recognizer_.modelTag());
-  embedding_store_->reload();
+  {
+    std::lock_guard<std::mutex> lock(gallery_mutex_);
+    embedding_store_->reload();
+  }
 
   // 情绪模型
   if (!emotion_recognizer_.init(config_.emotion_param_path,
@@ -608,6 +632,9 @@ bool App::initComponents() {
   }
   if (config_.platform.enabled) {
     platform_client_ = std::make_unique<PlatformClient>(config_.platform);
+    platform_client_->setCommandHandler([this](const PlatformCommand& command) {
+      return handlePlatformCommand(command);
+    });
     PlatformStatus status{};
     status.mode = "idle";
     status.inference_mode = config_.inference_mode;
@@ -632,6 +659,74 @@ void App::updatePlatformStatus(const std::string& mode, int active_tracks, doubl
   status.active_tracks = active_tracks;
   status.fps = fps;
   platform_client_->updateStatus(status);
+}
+
+PlatformCommandResult App::handlePlatformCommand(const PlatformCommand& command) {
+  PlatformCommandResult result{};
+  result.result["handled_by"] = "App";
+
+  const std::string command_name = lowerValue(trim(command.command));
+  if (command_name == "reload_gallery" || command_name == "reload_people") {
+    if (!embedding_store_) {
+      result.ok = false;
+      result.message = "embedding store is not initialized";
+      return result;
+    }
+    std::size_t gallery_size = 0;
+    {
+      std::lock_guard<std::mutex> lock(gallery_mutex_);
+      embedding_store_->reload();
+      gallery_size = embedding_store_->gallery().size();
+    }
+    result.ok = true;
+    result.message = "local gallery reloaded";
+    result.result["gallery_size"] = std::to_string(gallery_size);
+    std::cout << "[PlatformCommand] reload_gallery completed gallery_size=" << gallery_size << std::endl;
+    return result;
+  }
+
+  if (command_name == "set_mode") {
+    std::string requested = payloadValue(command, "mode");
+    if (requested.empty()) {
+      requested = payloadValue(command, "value");
+    }
+    requested = lowerValue(trim(requested));
+    const std::string current = lowerValue(config_.inference_mode);
+    result.result["current_mode"] = current;
+    result.result["requested_mode"] = requested;
+    if (requested.empty()) {
+      result.ok = false;
+      result.message = "set_mode requires payload.mode";
+      return result;
+    }
+    if (requested != "local" && requested != "hybrid" && requested != "cloud") {
+      result.ok = false;
+      result.message = "unsupported inference mode: " + requested;
+      return result;
+    }
+    if (requested == current) {
+      result.ok = true;
+      result.message = "mode already " + current;
+      return result;
+    }
+
+    result.ok = false;
+    result.message = "runtime mode switch is not supported yet; update config/app.yaml and restart the Pi app";
+    result.result["restart_required"] = "true";
+    return result;
+  }
+
+  if (command_name == "status") {
+    result.ok = true;
+    result.message = "status ok";
+    result.result["inference_mode"] = config_.inference_mode;
+    result.result["cloud_connected"] = (cloud_client_ && cloud_client_->enabled()) ? "true" : "false";
+    return result;
+  }
+
+  result.ok = false;
+  result.message = "unsupported Pi command: " + command.command;
+  return result;
 }
 
 /** @brief 打印主菜单到控制台 */
@@ -836,7 +931,10 @@ void App::handleEnrollment() {
   }
 
   // 录入结束，重载底库并释放资源
-  embedding_store_->reload();
+  {
+    std::lock_guard<std::mutex> lock(gallery_mutex_);
+    embedding_store_->reload();
+  }
   camera_->stop();
   renderer_->closeWindow();
   if (cloud_client_ && cloud_client_->enabled() && !enrolled_image_paths.empty()) {
@@ -982,7 +1080,10 @@ void App::handleRecognition() {
     return;
   }
 
-  embedding_store_->reload();
+  {
+    std::lock_guard<std::mutex> lock(gallery_mutex_);
+    embedding_store_->reload();
+  }
   std::cout << "[Recognition] press q to quit, press r to reload local gallery." << std::endl;
 
   auto fps_window_start = std::chrono::steady_clock::now();
@@ -1004,7 +1105,11 @@ void App::handleRecognition() {
 
     // 整帧送入推理管线，返回所有人脸的跟踪/识别/情绪结果
     const auto pipeline_start = std::chrono::steady_clock::now();
-    RecognitionResult result = pipeline_->process(frame);
+    RecognitionResult result{};
+    {
+      std::lock_guard<std::mutex> lock(gallery_mutex_);
+      result = pipeline_->process(frame);
+    }
     const auto pipeline_end = std::chrono::steady_clock::now();
     const double wait_ms = std::chrono::duration<double, std::milli>(frame_got_at - frame_wait_start).count();
     const double pipeline_ms = std::chrono::duration<double, std::milli>(pipeline_end - pipeline_start).count();
@@ -1060,6 +1165,7 @@ void App::handleRecognition() {
       break;
     }
     if (key == 'r' || key == 'R') {
+      std::lock_guard<std::mutex> lock(gallery_mutex_);
       embedding_store_->reload();
       std::cout << "[Recognition] gallery reloaded." << std::endl;
     }
@@ -1211,7 +1317,10 @@ void App::handleDeletePerson() {
 
     file_store_->removeFiles(image_paths);
     file_store_->removePersonDir(name);
-    embedding_store_->reload();
+    {
+      std::lock_guard<std::mutex> lock(gallery_mutex_);
+      embedding_store_->reload();
+    }
     std::cout << "[Delete] removed local data for " << name << std::endl;
   }
 

@@ -71,6 +71,14 @@ pip install -r requirements-cpu.txt
 
 ## Run
 
+If this is a fresh clone, copy the example config first:
+
+```powershell
+Copy-Item .\cloud_server\config.example.yaml .\cloud_server\config.yaml
+```
+
+Then edit `cloud_server/config.yaml` with your own private platform URL and device token. The real config file is ignored by Git.
+
 ```powershell
 cd cloud_server
 conda activate asdun-cloud
@@ -102,26 +110,26 @@ curl http://127.0.0.1:8000/health
 Health check from Raspberry Pi:
 
 ```bash
-curl http://asdun-cloud:8000/health
+curl http://gpu-server.local:8000/health
 ```
 
 Recommended networking for the current project:
 
-- Keep the Raspberry Pi hostname / Tailscale device name as `asdun`.
-- Rename the Windows/NVIDIA Tailscale device to `asdun-cloud`.
-- Keep the Raspberry Pi client config pointed at `http://asdun-cloud:8000`.
+- Keep the Raspberry Pi hostname / Tailscale device name stable, for example `raspberry-pi.local`.
+- Rename the Windows/NVIDIA Tailscale device to a stable name, for example `gpu-server.local`.
+- Keep the Raspberry Pi client config pointed at `http://gpu-server.local:8000`.
 - Keep the cloud server binding to `0.0.0.0`; do not bind it to a temporary phone-hotspot IP.
 
 From Windows, this helper verifies both local service health and the Pi-to-Windows route:
 
 ```powershell
-.\scripts\check_pi_cloud_link.ps1 -PiHost asdun -PiUser pi -CloudUrl http://asdun-cloud:8000
+.\scripts\check_pi_cloud_link.ps1 -PiHost raspberry-pi.local -PiUser pi -CloudUrl http://gpu-server.local:8000
 ```
 
 When developing on Windows and testing on the Raspberry Pi, sync only the Pi-side source/config/model files:
 
 ```powershell
-.\scripts\sync_to_pi.ps1 -PiHost asdun -PiUser pi -RemoteDir ~/asdun_pi
+.\scripts\sync_to_pi.ps1 -PiHost raspberry-pi.local -PiUser pi -RemoteDir ~/asdun_pi
 ```
 
 If Tailscale DNS is unstable, add the Windows Tailscale `100.x.y.z` address as a second entry under

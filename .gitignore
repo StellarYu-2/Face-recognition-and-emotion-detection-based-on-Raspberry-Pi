@@ -44,7 +44,14 @@
 /data/images/
 /data/db/
 /data/logs/
+/data/*.npz
+/data/**/*.npz
+/data/*.sqlite*
+/data/**/*.sqlite*
+/data/*.db
+/data/**/*.db
 /backups/
+*.bundle
 /cloud_server/data/
 /platform_server/data/
 
@@ -56,10 +63,12 @@
 
 # =========================
 # Model Weights / Large Files
-# Keep converted NCNN files under models/onnx_to_ncnn trackable.
+# Do not commit model weights. Put download/convert instructions in docs.
 # =========================
 /models/*.bin
 /models/*.param
+/models/**/*.bin
+/models/**/*.param
 /models/**/*.onnx
 /models/**/*.tflite
 /models/**/*.pt
@@ -116,3 +125,6 @@ desktop.ini
 .env
 .env.*
 *.local
+/config/app.yaml
+/cloud_server/config.yaml
+/deploy/platform_server/platform.env

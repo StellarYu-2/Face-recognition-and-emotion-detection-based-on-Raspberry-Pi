@@ -1,19 +1,21 @@
 # Models Setup
 
-当前项目默认从 `models/` 读取以下 NCNN 模型文件：
+模型权重和转换后的 `.bin/.param/.onnx` 文件不提交到 GitHub。请按需自行下载或转换，并放到本地 `models/` 目录。
+
+当前项目默认从 `models/onnx_to_ncnn/` 读取以下 NCNN 模型文件：
 
 - `face_detector.param`
 - `face_detector.bin`
-- `face_recognizer.param`
-- `face_recognizer.bin`
+- `mobilefacenet.param`
+- `mobilefacenet.bin`
 - `emotion.param`
 - `emotion.bin`
 
-你当前已经放入的 ONNX 模型：
+Windows GPU/InsightFace 路径通常还需要自行放入：
 
-- `version-RFB-320.onnx`
-- `arcfaceresnet100-8.onnx`
-- `emotion-ferplus-8.onnx`
+- `models/emotion-ferplus-8.onnx`
+- `models/arcfaceresnet100-8.onnx`
+- `models/buffalo_l/`
 
 ## 推荐做法
 

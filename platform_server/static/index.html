@@ -7,7 +7,7 @@
     <style>
       :root {
         color-scheme: light;
-        --bg: #f7f8fa;
+        --bg: #f4f7fb;
         --surface: #ffffff;
         --line: #d9dee7;
         --text: #18202e;
@@ -16,6 +16,8 @@
         --amber: #a86200;
         --red: #b42318;
         --blue: #2458d3;
+        --soft-blue: #edf4ff;
+        --shadow: 0 12px 32px rgba(24, 32, 46, 0.08);
       }
 
       * {
@@ -39,6 +41,7 @@
         padding: 0 24px;
         border-bottom: 1px solid var(--line);
         background: var(--surface);
+        box-shadow: 0 1px 0 rgba(24, 32, 46, 0.04);
       }
 
       h1 {
@@ -48,7 +51,7 @@
       }
 
       main {
-        width: min(1180px, calc(100vw - 32px));
+        width: min(1240px, calc(100vw - 32px));
         margin: 24px auto;
       }
 
@@ -62,12 +65,12 @@
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        margin: 0 0 10px;
+        margin: 0 0 12px;
       }
 
       h2 {
         margin: 0;
-        font-size: 16px;
+        font-size: 17px;
       }
 
       button {
@@ -83,6 +86,27 @@
 
       button:hover {
         border-color: var(--blue);
+        color: var(--blue);
+      }
+
+      .primary-button {
+        border-color: var(--blue);
+        background: var(--blue);
+        color: #ffffff;
+      }
+
+      .primary-button:hover {
+        color: #ffffff;
+        filter: brightness(0.96);
+      }
+
+      .text-button {
+        min-height: 30px;
+        padding: 0 10px;
+        border-color: #c8d7f2;
+        background: var(--soft-blue);
+        color: var(--blue);
+        font-size: 13px;
       }
 
       select,
@@ -107,10 +131,30 @@
 
       .command-form {
         display: grid;
-        grid-template-columns: minmax(160px, 1fr) minmax(150px, 1fr) minmax(220px, 2fr) auto;
+        grid-template-columns: minmax(160px, 1fr) minmax(150px, 1fr) minmax(180px, 1.4fr) minmax(170px, 1fr) auto auto;
         gap: 10px;
         align-items: start;
         margin-bottom: 10px;
+      }
+
+      .icon-button {
+        min-width: 34px;
+        padding: 0 10px;
+      }
+
+      .command-quick {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 10px;
+      }
+
+      .quick-button {
+        min-height: 32px;
+        border-color: #c8d7f2;
+        background: var(--soft-blue);
+        color: var(--blue);
       }
 
       .section-actions {
@@ -150,16 +194,20 @@
 
       table {
         width: 100%;
-        border-collapse: collapse;
+        border-collapse: separate;
+        border-spacing: 0;
         table-layout: fixed;
         background: var(--surface);
         border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 6px 18px rgba(24, 32, 46, 0.04);
       }
 
       th,
       td {
         padding: 11px 12px;
-        border-bottom: 1px solid var(--line);
+        border-bottom: 1px solid #e6eaf1;
         text-align: left;
         vertical-align: top;
         font-size: 14px;
@@ -167,6 +215,7 @@
 
       th {
         color: var(--muted);
+        background: #fbfcfe;
         font-size: 12px;
         font-weight: 700;
         text-transform: uppercase;
@@ -181,7 +230,7 @@
       }
 
       tr.selectable:hover td {
-        background: #f4f7fb;
+        background: #f7faff;
       }
 
       tr.selected td {
@@ -191,6 +240,7 @@
       .pill {
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         min-width: 74px;
         min-height: 24px;
         padding: 0 9px;
@@ -263,9 +313,23 @@
 
       .emotion-row {
         display: grid;
-        grid-template-columns: 72px minmax(120px, 1fr) 56px;
+        grid-template-columns: 76px minmax(100px, 1fr) 62px;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
+      }
+
+      .emotion-cell {
+        padding-right: 22px;
+      }
+
+      .last-seen-cell {
+        padding-left: 18px;
+        white-space: nowrap;
+      }
+
+      .report-cell {
+        text-align: left;
+        white-space: nowrap;
       }
 
       .meter {
@@ -276,6 +340,7 @@
       }
 
       .meter-fill {
+        display: block;
         height: 100%;
         border-radius: inherit;
         background: var(--blue);
@@ -297,6 +362,110 @@
         background: #b42318;
       }
 
+      .modal {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      .modal-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(24, 32, 46, 0.42);
+      }
+
+      .report-shell {
+        position: relative;
+        width: min(760px, calc(100vw - 32px));
+        max-height: calc(100vh - 48px);
+        overflow: auto;
+        border-radius: 8px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+
+      .report-card {
+        padding: 24px;
+        background: #ffffff;
+      }
+
+      .report-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
+      .report-title {
+        margin: 0;
+        font-size: 24px;
+      }
+
+      .report-subtitle {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .report-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+
+      .report-stat {
+        min-height: 76px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfcfe;
+      }
+
+      .report-stat strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 20px;
+      }
+
+      .report-emotions {
+        display: grid;
+        gap: 10px;
+        margin: 18px 0;
+      }
+
+      .report-emotion-row {
+        display: grid;
+        grid-template-columns: 110px minmax(160px, 1fr) 64px;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .report-summary {
+        margin: 18px 0 0;
+        padding: 14px 16px;
+        border-radius: 8px;
+        background: var(--soft-blue);
+        color: #18305f;
+        line-height: 1.55;
+      }
+
+      .report-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 14px 24px 24px;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
       @media (max-width: 760px) {
         header {
           align-items: flex-start;
@@ -312,6 +481,14 @@
 
         .command-form {
           grid-template-columns: 1fr;
+        }
+
+        .report-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .report-emotion-row {
+          grid-template-columns: 92px minmax(120px, 1fr) 58px;
         }
 
         table {
@@ -371,7 +548,14 @@
           <select id="command-device" aria-label="Command device"></select>
           <input id="command-name" type="text" placeholder="set_mode" aria-label="Command name" />
           <textarea id="command-payload" placeholder='{"mode":"hybrid"}' aria-label="Command payload"></textarea>
+          <input id="admin-token" type="password" placeholder="Admin token" aria-label="Admin token" autocomplete="off" />
+          <button id="clear-admin-token" class="icon-button" type="button" title="Clear saved admin token" aria-label="Clear saved admin token">Clear</button>
           <button id="send-command" type="button">Send</button>
+        </div>
+        <div class="command-quick" aria-label="Quick commands">
+          <button class="quick-button" type="button" data-quick-command="ping" data-quick-payload="{}">Ping</button>
+          <button class="quick-button" type="button" data-quick-command="status" data-quick-payload="{}">Status</button>
+          <button class="quick-button" type="button" data-quick-command="reload_gallery" data-quick-payload="{}">Reload gallery</button>
         </div>
         <div id="command-status" class="status-text"></div>
         <table>
@@ -425,16 +609,17 @@
         <table>
           <thead>
             <tr>
-              <th style="width: 17%">Person</th>
-              <th style="width: 10%">Records</th>
-              <th style="width: 13%">Identity Avg</th>
+              <th style="width: 15%">Person</th>
+              <th style="width: 9%">Records</th>
+              <th style="width: 12%">Identity Avg</th>
               <th style="width: 15%">Dominant Emotion</th>
-              <th>Emotion Share</th>
-              <th style="width: 16%">Last Seen</th>
+              <th style="width: 28%">Emotion Share</th>
+              <th style="width: 14%">Last Seen</th>
+              <th style="width: 7%">Report</th>
             </tr>
           </thead>
           <tbody id="people">
-            <tr><td class="empty" colspan="6">No people</td></tr>
+            <tr><td class="empty" colspan="7">No people</td></tr>
           </tbody>
         </table>
       </section>
@@ -461,6 +646,18 @@
       </section>
     </main>
 
+    <div id="report-modal" class="modal" hidden>
+      <div class="modal-backdrop" data-close-report></div>
+      <div class="report-shell" role="dialog" aria-modal="true" aria-labelledby="report-title">
+        <div id="report-card" class="report-card"></div>
+        <div class="report-actions">
+          <button id="copy-report" type="button">复制总结</button>
+          <button id="download-report" class="primary-button" type="button">导出PDF</button>
+          <button id="close-report" type="button">关闭</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       const state = {
         devices: [],
@@ -469,10 +666,12 @@
         people: [],
         recognition_events: [],
         selectedPerson: "",
+        activeReport: null,
         ws: null,
       };
 
       const $ = (id) => document.getElementById(id);
+      const savedAdminToken = localStorage.getItem("asdun_admin_token") || "";
 
       function timeText(ms) {
         if (!ms) return "-";
@@ -691,7 +890,7 @@
         $("people-count").textContent = `${people.length}`;
         const body = $("people");
         if (!people.length) {
-          body.innerHTML = '<tr><td class="empty" colspan="6">No people</td></tr>';
+          body.innerHTML = '<tr><td class="empty" colspan="7">No people</td></tr>';
           return;
         }
         body.innerHTML = people.map((person) => {
@@ -709,11 +908,295 @@
               <td class="mono">${person.event_count || 0}</td>
               <td>${Number(person.avg_identity_confidence || 0).toFixed(1)}%</td>
               <td>${dominantText}</td>
-              <td>${renderEmotionShare(person.emotions)}</td>
-              <td>${timeText(person.last_seen_ms)}</td>
+              <td class="emotion-cell">${renderEmotionShare(person.emotions)}</td>
+              <td class="last-seen-cell">${timeText(person.last_seen_ms)}</td>
+              <td class="report-cell"><button class="text-button" type="button" data-report-person="${name}">心情日报</button></td>
             </tr>
           `;
         }).join("");
+      }
+
+      function localDateKey(ms) {
+        const date = new Date(ms || Date.now());
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, "0");
+        const d = String(date.getDate()).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      }
+
+      function emotionEmoji(label) {
+        const normalized = String(label || "").toLowerCase();
+        if (normalized === "happy") return "😊";
+        if (normalized === "calm" || normalized === "neutral") return "😌";
+        if (normalized === "sad") return "😢";
+        if (normalized === "angry") return "😠";
+        if (normalized === "surprise" || normalized === "surprised") return "😮";
+        return "🙂";
+      }
+
+      function emotionTone(label) {
+        const normalized = String(label || "").toLowerCase();
+        if (normalized === "happy") return "今天的快乐信号比较明显，整体状态偏明亮。";
+        if (normalized === "calm" || normalized === "neutral") return "今天整体比较平稳，情绪节奏很安定。";
+        if (normalized === "sad") return "今天低落情绪出现较多，适合放慢一点，好好休息。";
+        if (normalized === "angry") return "今天紧绷感偏高，适合留一点缓冲时间给自己。";
+        return "今天情绪比较多样，整体状态仍在持续观察中。";
+      }
+
+      function buildReportStats(personName, events) {
+        const today = localDateKey(Date.now());
+        const personEvents = (events || [])
+          .filter(isKnownRecognitionEvent)
+          .filter((event) => eventPersonName(event).toLowerCase() === personName.toLowerCase())
+          .filter((event) => localDateKey(event.ts_ms || event.received_ms) === today);
+
+        const buckets = {};
+        for (const event of personEvents) {
+          const label = String(event.emotion || "Unknown").trim() || "Unknown";
+          buckets[label] = (buckets[label] || 0) + 1;
+        }
+
+        const total = personEvents.length;
+        const emotions = Object.entries(buckets)
+          .map(([label, count]) => ({
+            label,
+            count,
+            pct: total > 0 ? count * 100 / total : 0,
+          }))
+          .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+        const dominant = emotions[0] || null;
+        return { today, total, emotions, dominant };
+      }
+
+      function renderReportCard(personName, report) {
+        const dominantLabel = report.dominant?.label || "-";
+        const dominantPct = report.dominant ? `${report.dominant.pct.toFixed(1)}%` : "-";
+        const summary = report.total
+          ? `${emotionEmoji(dominantLabel)} ${personName} 今日主要情绪是 ${dominantLabel}，占比 ${dominantPct}。${emotionTone(dominantLabel)}`
+          : `🙂 ${personName} 今天还没有有效识别记录，暂时无法生成情绪趋势。`;
+        const rows = report.emotions.length ? report.emotions : [{ label: "No data", count: 0, pct: 0 }];
+
+        $("report-card").innerHTML = `
+          <div class="report-head">
+            <div>
+              <h3 id="report-title" class="report-title">${escapeHtml(personName)} 心情日报</h3>
+              <div class="report-subtitle">${escapeHtml(report.today)} · ASDUN Platform</div>
+            </div>
+            <span class="pill online">${report.total ? "Ready" : "No Data"}</span>
+          </div>
+          <div class="report-grid">
+            <div class="report-stat">
+              <span class="muted">Records</span>
+              <strong>${report.total}</strong>
+            </div>
+            <div class="report-stat">
+              <span class="muted">Dominant</span>
+              <strong>${emotionEmoji(dominantLabel)} ${escapeHtml(dominantLabel)}</strong>
+            </div>
+            <div class="report-stat">
+              <span class="muted">Share</span>
+              <strong>${dominantPct}</strong>
+            </div>
+          </div>
+          <div class="report-emotions">
+            ${rows.map((item) => {
+              const pct = Math.max(0, Math.min(100, Number(item.pct || 0)));
+              return `
+                <div class="report-emotion-row">
+                  <span>${emotionEmoji(item.label)} ${escapeHtml(item.label)}</span>
+                  <span class="meter"><span class="meter-fill ${emotionClass(item.label)}" style="width: ${pct}%"></span></span>
+                  <span class="mono">${pct.toFixed(1)}%</span>
+                </div>
+              `;
+            }).join("")}
+          </div>
+          <div class="report-summary">${escapeHtml(summary)}</div>
+        `;
+        state.activeReport = { personName, report, summary };
+      }
+
+      async function openMoodReport(personName) {
+        const params = new URLSearchParams({ person: personName, limit: "500" });
+        const res = await fetch(`/api/events/recognition?${params.toString()}`);
+        const data = await res.json();
+        const report = buildReportStats(personName, data.events || []);
+        renderReportCard(personName, report);
+        $("report-modal").hidden = false;
+      }
+
+      function closeMoodReport() {
+        $("report-modal").hidden = true;
+      }
+
+      function saveAdminToken() {
+        const token = $("admin-token").value.trim();
+        if (token) {
+          localStorage.setItem("asdun_admin_token", token);
+          return token;
+        }
+        localStorage.removeItem("asdun_admin_token");
+        return "";
+      }
+
+      async function copyReportSummary() {
+        if (!state.activeReport) return;
+        const text = state.activeReport.summary;
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          const area = document.createElement("textarea");
+          area.value = text;
+          document.body.appendChild(area);
+          area.select();
+          document.execCommand("copy");
+          area.remove();
+        }
+      }
+
+      function exportReportPdf() {
+        if (!state.activeReport) return;
+        const safeName = state.activeReport.personName.replace(/[^\w.-]+/g, "_") || "person";
+        const title = `${safeName}_mood_daily_${state.activeReport.report.today}`;
+        const iframe = document.createElement("iframe");
+        iframe.setAttribute("aria-hidden", "true");
+        iframe.style.position = "fixed";
+        iframe.style.right = "0";
+        iframe.style.bottom = "0";
+        iframe.style.width = "0";
+        iframe.style.height = "0";
+        iframe.style.border = "0";
+        document.body.appendChild(iframe);
+
+        const printDocument = iframe.contentWindow.document;
+        printDocument.open();
+        printDocument.write(`<!doctype html>
+          <html lang="zh-CN">
+            <head>
+              <meta charset="utf-8" />
+              <title>${escapeHtml(title)}</title>
+              <style>
+                @page { size: A4; margin: 16mm; }
+                * { box-sizing: border-box; }
+                body {
+                  margin: 0;
+                  background: #ffffff;
+                  color: #18202e;
+                  font-family: Arial, "Microsoft YaHei", "PingFang SC", sans-serif;
+                  letter-spacing: 0;
+                  -webkit-print-color-adjust: exact;
+                  print-color-adjust: exact;
+                }
+                .report-card {
+                  width: 100%;
+                  padding: 0;
+                  background: #ffffff;
+                }
+                .report-head {
+                  display: flex;
+                  align-items: flex-start;
+                  justify-content: space-between;
+                  gap: 16px;
+                  margin-bottom: 18px;
+                }
+                .report-title {
+                  margin: 0;
+                  font-size: 30px;
+                  line-height: 1.2;
+                }
+                .report-subtitle {
+                  margin-top: 8px;
+                  color: #657085;
+                  font-size: 16px;
+                }
+                .pill {
+                  display: inline-flex;
+                  align-items: center;
+                  justify-content: center;
+                  min-width: 86px;
+                  min-height: 28px;
+                  padding: 0 12px;
+                  border-radius: 999px;
+                  font-size: 13px;
+                  font-weight: 700;
+                }
+                .online {
+                  color: #168a4a;
+                  background: #e8f5ee;
+                }
+                .report-grid {
+                  display: grid;
+                  grid-template-columns: repeat(3, minmax(0, 1fr));
+                  gap: 12px;
+                  margin-bottom: 22px;
+                }
+                .report-stat {
+                  min-height: 86px;
+                  padding: 14px;
+                  border: 1px solid #d9dee7;
+                  border-radius: 8px;
+                  background: #fbfcfe;
+                }
+                .report-stat strong {
+                  display: block;
+                  margin-top: 8px;
+                  font-size: 24px;
+                }
+                .muted {
+                  color: #657085;
+                }
+                .report-emotions {
+                  display: grid;
+                  gap: 14px;
+                  margin: 20px 0;
+                }
+                .report-emotion-row {
+                  display: grid;
+                  grid-template-columns: 120px minmax(180px, 1fr) 70px;
+                  align-items: center;
+                  gap: 12px;
+                  font-size: 18px;
+                }
+                .meter {
+                  height: 8px;
+                  overflow: hidden;
+                  border-radius: 999px;
+                  background: #eef1f5;
+                }
+                .meter-fill {
+                  display: block;
+                  height: 100%;
+                  border-radius: inherit;
+                  background: #2458d3;
+                }
+                .meter-fill.happy { background: #168a4a; }
+                .meter-fill.calm { background: #2458d3; }
+                .meter-fill.sad { background: #6f5bd6; }
+                .meter-fill.angry { background: #b42318; }
+                .mono {
+                  font-family: Consolas, Monaco, monospace;
+                }
+                .report-summary {
+                  margin: 22px 0 0;
+                  padding: 16px 18px;
+                  border-radius: 8px;
+                  background: #edf4ff;
+                  color: #18305f;
+                  font-size: 18px;
+                  line-height: 1.55;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="report-card">${$("report-card").innerHTML}</div>
+            </body>
+          </html>`);
+        printDocument.close();
+
+        setTimeout(() => {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+          setTimeout(() => iframe.remove(), 1000);
+        }, 100);
       }
 
       function metricValue(value, suffix = "") {
@@ -809,10 +1292,10 @@
         renderAll();
       }
 
-      async function sendCommand() {
+      async function sendCommand(commandOverride, payloadOverride) {
         const deviceId = $("command-device").value;
-        const commandName = $("command-name").value.trim();
-        const rawPayload = $("command-payload").value.trim();
+        const commandName = String(commandOverride || $("command-name").value).trim();
+        const rawPayload = payloadOverride == null ? $("command-payload").value.trim() : JSON.stringify(payloadOverride);
         if (!deviceId || !commandName) {
           $("command-status").textContent = "Missing device or command";
           return;
@@ -828,9 +1311,15 @@
           }
         }
 
+        const headers = { "Content-Type": "application/json" };
+        const adminToken = saveAdminToken();
+        if (adminToken) {
+          headers["X-ASDUN-Admin-Token"] = adminToken;
+        }
+
         const res = await fetch("/api/commands", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({
             device_id: deviceId,
             command: commandName,
@@ -843,8 +1332,10 @@
           return;
         }
         $("command-status").textContent = `Sent ${data.command.command_id}`;
-        $("command-name").value = "";
-        $("command-payload").value = "";
+        if (!commandOverride) {
+          $("command-name").value = "";
+          $("command-payload").value = "";
+        }
         const index = state.commands.findIndex((item) => item.command_id === data.command.command_id);
         if (index >= 0) state.commands[index] = data.command;
         else state.commands.unshift(data.command);
@@ -912,13 +1403,46 @@
       }
 
       $("refresh").addEventListener("click", loadSnapshot);
+      $("admin-token").value = savedAdminToken;
+      $("admin-token").addEventListener("input", saveAdminToken);
+      $("clear-admin-token").addEventListener("click", () => {
+        $("admin-token").value = "";
+        saveAdminToken();
+        $("command-status").textContent = "Admin token cleared";
+      });
       $("send-command").addEventListener("click", () => {
         sendCommand().catch(() => setSocketState("HTTP error", "bad"));
+      });
+      document.querySelector(".command-quick").addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-quick-command]");
+        if (!button) return;
+        let payload = {};
+        try {
+          payload = JSON.parse(button.getAttribute("data-quick-payload") || "{}");
+        } catch {
+          $("command-status").textContent = "Quick payload JSON error";
+          return;
+        }
+        sendCommand(button.getAttribute("data-quick-command") || "", payload).catch(() => setSocketState("HTTP error", "bad"));
+      });
+      $("close-report").addEventListener("click", closeMoodReport);
+      $("copy-report").addEventListener("click", () => {
+        copyReportSummary().catch(() => setSocketState("HTTP error", "bad"));
+      });
+      $("download-report").addEventListener("click", exportReportPdf);
+      $("report-modal").addEventListener("click", (event) => {
+        if (event.target.matches("[data-close-report]")) closeMoodReport();
       });
       $("person-filter").addEventListener("change", (event) => {
         selectPerson(event.target.value).catch(() => setSocketState("HTTP error", "bad"));
       });
       $("people").addEventListener("click", (event) => {
+        const reportButton = event.target.closest("button[data-report-person]");
+        if (reportButton) {
+          event.stopPropagation();
+          openMoodReport(reportButton.getAttribute("data-report-person") || "").catch(() => setSocketState("HTTP error", "bad"));
+          return;
+        }
         const row = event.target.closest("tr[data-person]");
         if (!row) return;
         const name = row.getAttribute("data-person") || "";

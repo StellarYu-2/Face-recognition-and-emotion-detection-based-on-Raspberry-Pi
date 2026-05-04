@@ -18,8 +18,12 @@
 - 新增 `scripts/test_platform_command_flow.ps1`，用于模拟完整命令下发和回传流程。
 - ESP32 对接文档新增命令轮询和结果回传流程。
 - 新增 `examples/esp32_platform_client/esp32_platform_client.ino`，给 ESP32 同学参考温湿度上传和命令轮询。
+- Dashboard People 区域新增心情日报弹窗和导出功能，可按人员生成当天情绪占比总结。
+- Raspberry Pi 的 PlatformClient 新增命令轮询执行能力，支持 `ping`、`status`、`reload_gallery`，并会把执行结果回传到平台。
+- 新增 `scripts/post_platform_command.ps1`，用于创建真实平台命令并等待设备回传结果。
+- Dashboard Commands 区域新增 Admin token 输入框和 `Ping`、`Status`、`Reload gallery` 常用命令按钮。
 
-下一步建议继续做：让 ESP32 真机按示例接入轮询、给 Pi 端补命令轮询执行、设备注册页面、React 前端重构。
+下一步建议继续做：让 ESP32 真机按示例接入轮询、设备注册页面、告警规则、React 前端重构。
 
 ## 1. 当前结论
 
@@ -355,8 +359,7 @@ POST /api/commands/{command_id}/result
 ```json
 {
   "device_id": "pi-01",
-  "command": "set_mode",
-  "value": "hybrid",
+  "command": "reload_gallery",
   "request_id": "cmd-001"
 }
 ```
@@ -367,8 +370,18 @@ POST /api/commands/{command_id}/result
 {
   "request_id": "cmd-001",
   "ok": true,
-  "message": "mode updated"
+  "message": "local gallery reloaded"
 }
+```
+
+当前 Pi 端已经支持的 HTTP 轮询命令：
+
+```text
+ping             连通性测试，返回 pong
+status           返回当前推理模式和云端连接状态
+reload_gallery   重新加载本地人脸库
+reload_people    reload_gallery 的别名
+set_mode         可检查当前模式；运行时切换 local/hybrid/cloud 暂不自动执行，需要改 config/app.yaml 后重启
 ```
 
 MQTT 版本后续可升级为：

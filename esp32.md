@@ -388,7 +388,7 @@ ArduinoJson
 
 ```powershell
 .\scripts\test_platform_command_flow.ps1 `
-  -PlatformUrl http://8.163.47.15:9000 `
+  -PlatformUrl https://api.asdun.example.com `
   -DeviceId esp32-01 `
   -AdminToken your-admin-token `
   -DeviceToken your-esp32-token

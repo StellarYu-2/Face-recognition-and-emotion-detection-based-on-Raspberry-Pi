@@ -8,12 +8,12 @@
 默认设备命名：
 
 ```text
-Raspberry Pi / Tailscale name: asdun
-Windows GPU / Tailscale name: asdun-cloud
-Raspberry Pi user: asdun
+Raspberry Pi / Tailscale name: raspberry-pi.local
+Windows GPU / Tailscale name: gpu-server.local
+Raspberry Pi user: pi
 ```
 
-如果你的用户名或设备名不同，请替换命令中的 `asdun` 或 `asdun-cloud`。
+如果你的用户名或设备名不同，请替换命令中的 `pi`、`raspberry-pi.local` 或 `gpu-server.local`。
 
 ## 1. 云端混合模式
 
@@ -39,8 +39,8 @@ http://127.0.0.1:9000
 然后再启动 Windows 云端推理服务和树莓派程序。正常情况下页面会看到：
 
 ```text
-asdun@asdun
-asdun-cloud
+raspberry-pi
+gpu-server.local
 ```
 
 ### 1.1 Windows 启动 GPU 云端服务
@@ -98,7 +98,7 @@ curl.exe http://127.0.0.1:8000/gallery/diagnostics
 确认 Windows 云端服务已经启动后，在 Windows 项目根目录运行：
 
 ```powershell
-.\scripts\check_pi_cloud_link.ps1 -PiHost asdun -PiUser asdun -CloudUrl http://asdun-cloud:8000
+.\scripts\check_pi_cloud_link.ps1 -PiHost raspberry-pi.local -PiUser pi -CloudUrl http://gpu-server.local:8000
 ```
 
 如果成功，会看到：
@@ -116,8 +116,8 @@ curl.exe http://127.0.0.1:8000/health
 以及在树莓派上检查：
 
 ```bash
-curl http://asdun-cloud:8000/health
-curl http://100.120.250.49:8000/health
+curl http://gpu-server.local:8000/health
+curl http://100.x.y.z:8000/health
 ```
 
 ### 1.3 Windows 同步代码到树莓派
@@ -126,7 +126,7 @@ curl http://100.120.250.49:8000/health
 
 ```powershell
 cd C:\Users\Yu.WIN-H4MB5VM86KC.000\Desktop\asdun_pi
-.\scripts\sync_to_pi.ps1 -PiHost asdun -PiUser asdun -RemoteDir ~/asdun_pi
+.\scripts\sync_to_pi.ps1 -PiHost raspberry-pi.local -PiUser pi -RemoteDir ~/asdun_pi
 ```
 
 该脚本会同步树莓派端需要的源码、配置、脚本和轻量模型，不会删除树莓派上的运行数据。
@@ -143,10 +143,10 @@ cd ~/asdun_pi
 
 ```yaml
 inference_mode: "hybrid"
-cloud_server_url: "http://asdun-cloud:8000"
+cloud_server_url: "http://gpu-server.local:8000"
 cloud_server_urls:
-  - "http://asdun-cloud:8000"
-  - "http://100.120.250.49:8000"
+  - "http://gpu-server.local:8000"
+  - "http://100.x.y.z:8000"
 max_emotion_faces: 0
 cloud_apply_identity: true
 cloud_apply_emotion: true
@@ -178,12 +178,12 @@ cmake --build build_rpi -j4
 启动时如果云端连接正常，会看到类似：
 
 ```text
-[CloudClient] probing: http://asdun-cloud:8000/health
-[CloudClient] selected server: http://asdun-cloud:8000
-[CloudClient] enabled: http://asdun-cloud:8000/analyze
+[CloudClient] probing: http://gpu-server.local:8000/health
+[CloudClient] selected server: http://gpu-server.local:8000
+[CloudClient] enabled: http://gpu-server.local:8000/analyze
 ```
 
-如果 `asdun-cloud` 名称偶尔超时，程序会继续尝试备用 Tailscale IP。
+如果 `gpu-server.local` 名称偶尔超时，程序会继续尝试备用 Tailscale IP。
 
 ### 1.6 菜单操作
 
@@ -341,7 +341,7 @@ Windows PowerShell：
 
 ```powershell
 cd C:\Users\Yu.WIN-H4MB5VM86KC.000\Desktop\asdun_pi
-.\scripts\sync_to_pi.ps1 -PiHost asdun -PiUser asdun -RemoteDir ~/asdun_pi
+.\scripts\sync_to_pi.ps1 -PiHost raspberry-pi.local -PiUser pi -RemoteDir ~/asdun_pi
 ```
 
 树莓派：
@@ -383,13 +383,13 @@ curl.exe http://127.0.0.1:8000/health
 .\scripts\run_cloud_server.ps1 -SkipInstall
 ```
 
-### 5.2 树莓派访问 `asdun-cloud` 超时
+### 5.2 树莓派访问 `gpu-server.local` 超时
 
 在树莓派上测试：
 
 ```bash
-curl http://asdun-cloud:8000/health
-curl http://100.120.250.49:8000/health
+curl http://gpu-server.local:8000/health
+curl http://100.x.y.z:8000/health
 ```
 
 如果设备名不通但 IP 能通，说明 Tailscale MagicDNS 或名称解析不稳定，可以继续依赖 `cloud_server_urls` 中的备用 IP。
